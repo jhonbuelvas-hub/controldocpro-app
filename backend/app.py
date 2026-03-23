@@ -728,7 +728,7 @@ def new_communication():
         cur.execute("SELECT id, numero_contrato FROM contracts WHERE activo = TRUE ORDER BY numero_contrato")
         contracts = cur.fetchall()
 
-        cur.execute("SELECT id, nombre FROM third_parties WHERE activo = TRUE ORDER BY nombre")
+        cur.execute("SELECT id, nombre FROM third_parties WHERE estado = TRUE ORDER BY nombre")
         third_parties = cur.fetchall()
 
         if request.method == "POST":
