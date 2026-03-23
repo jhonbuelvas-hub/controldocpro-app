@@ -78,6 +78,33 @@ def create_third_parties_table_if_needed():
     cur.close()
     conn.close()
 
+def create_contracts_table_if_needed():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS contracts (
+            id SERIAL PRIMARY KEY,
+            numero_contrato VARCHAR(100) UNIQUE NOT NULL,
+            objeto TEXT NOT NULL,
+            tipo_contrato VARCHAR(100) NOT NULL,
+            estado_contrato VARCHAR(50) NOT NULL,
+            valor_inicial NUMERIC(14,2) NOT NULL DEFAULT 0,
+            valor_total NUMERIC(14,2) NOT NULL DEFAULT 0,
+            fecha_suscripcion DATE,
+            fecha_inicio DATE,
+            fecha_fin DATE,
+            contratista_id INTEGER NOT NULL REFERENCES third_parties(id),
+            supervisor_id INTEGER REFERENCES third_parties(id),
+            usuario_creador_id INTEGER REFERENCES users(id),
+            observaciones TEXT,
+            activo BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
 
 @app.route("/")
 def home():
@@ -863,6 +890,444 @@ def toggle_third_party_status(third_party_id):
 
     except Exception as e:
         return f"Error al cambiar estado del tercero: {str(e)}"
+
+def validate_contract_form(numero_contrato, objeto, tipo_contrato, estado_contrato, valor_inicial, valor_total, contratista_id):
+    errors = []
+
+    tipos_validos = [
+        "PRESTACION_SERVICIOS",
+        "SUMINISTRO",
+        "CONSULTORIA",
+        "OBRA",
+        "INTERADMINISTRATIVO",
+        "COMPRAVENTA",
+        "OTRO"
+    ]
+
+    estados_validos = [
+        "BORRADOR",
+        "EN_REVISION",
+        "APROBADO",
+        "FIRMADO",
+        "EN_EJECUCION",
+        "SUSPENDIDO",
+        "LIQUIDADO",
+        "CERRADO"
+    ]
+
+    if not numero_contrato or len(numero_contrato.strip()) < 3:
+        errors.append("El número de contrato es obligatorio.")
+
+    if not objeto or len(objeto.strip()) < 10:
+        errors.append("El objeto contractual es obligatorio y debe ser más descriptivo.")
+
+    if tipo_contrato not in tipos_validos:
+        errors.append("Debe seleccionar un tipo de contrato válido.")
+
+    if estado_contrato not in estados_validos:
+        errors.append("Debe seleccionar un estado contractual válido.")
+
+    try:
+        vi = float(valor_inicial)
+        vt = float(valor_total)
+        if vi < 0 or vt < 0:
+            errors.append("Los valores del contrato no pueden ser negativos.")
+    except:
+        errors.append("Los valores del contrato deben ser numéricos.")
+
+    if not contratista_id:
+        errors.append("Debe seleccionar un contratista.")
+
+    return errors
+
+
+@app.route("/create-contracts-table")
+@login_required
+def create_contracts_table():
+    try:
+        create_contracts_table_if_needed()
+        return "Tabla contracts creada correctamente 🚀"
+    except Exception as e:
+        return f"Error al crear la tabla contracts: {str(e)}"
+
+
+@app.route("/contracts")
+@login_required
+def list_contracts():
+    try:
+        create_contracts_table_if_needed()
+        create_third_parties_table_if_needed()
+
+        search = request.args.get("search", "").strip()
+        tipo = request.args.get("tipo", "").strip()
+        estado = request.args.get("estado", "").strip()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = """
+            SELECT
+                c.id,
+                c.numero_contrato,
+                c.objeto,
+                c.tipo_contrato,
+                c.estado_contrato,
+                c.valor_inicial,
+                c.valor_total,
+                c.fecha_inicio,
+                c.fecha_fin,
+                c.activo,
+                contratista.nombre AS contratista_nombre,
+                supervisor.nombre AS supervisor_nombre
+            FROM contracts c
+            INNER JOIN third_parties contratista ON c.contratista_id = contratista.id
+            LEFT JOIN third_parties supervisor ON c.supervisor_id = supervisor.id
+            WHERE 1=1
+        """
+        params = []
+
+        if search:
+            query += " AND (LOWER(c.numero_contrato) LIKE %s OR LOWER(c.objeto) LIKE %s OR LOWER(contratista.nombre) LIKE %s)"
+            like_value = f"%{search.lower()}%"
+            params.extend([like_value, like_value, like_value])
+
+        if tipo:
+            query += " AND c.tipo_contrato = %s"
+            params.append(tipo)
+
+        if estado == "activo":
+            query += " AND c.activo = TRUE"
+        elif estado == "inactivo":
+            query += " AND c.activo = FALSE"
+
+        query += " ORDER BY c.id DESC"
+
+        cur.execute(query, params)
+        contracts = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        return render_template(
+            "contracts.html",
+            contracts=contracts,
+            search=search,
+            tipo=tipo,
+            estado=estado
+        )
+    except Exception as e:
+        return f"Error al listar contratos: {str(e)}"
+
+
+@app.route("/contracts/new", methods=["GET", "POST"])
+@login_required
+def new_contract():
+    try:
+        create_contracts_table_if_needed()
+        create_third_parties_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT id, nombre, tipo_tercero
+            FROM third_parties
+            WHERE estado = TRUE
+            ORDER BY nombre
+        """)
+        third_parties = cur.fetchall()
+
+        if request.method == "POST":
+            numero_contrato = request.form.get("numero_contrato", "").strip()
+            objeto = request.form.get("objeto", "").strip()
+            tipo_contrato = request.form.get("tipo_contrato", "").strip()
+            estado_contrato = request.form.get("estado_contrato", "").strip()
+            valor_inicial = request.form.get("valor_inicial", "0").strip()
+            valor_total = request.form.get("valor_total", "0").strip()
+            fecha_suscripcion = request.form.get("fecha_suscripcion") or None
+            fecha_inicio = request.form.get("fecha_inicio") or None
+            fecha_fin = request.form.get("fecha_fin") or None
+            contratista_id = request.form.get("contratista_id", "").strip()
+            supervisor_id = request.form.get("supervisor_id") or None
+            observaciones = request.form.get("observaciones", "").strip()
+
+            errors = validate_contract_form(
+                numero_contrato, objeto, tipo_contrato, estado_contrato,
+                valor_inicial, valor_total, contratista_id
+            )
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+                contract = {
+                    "numero_contrato": numero_contrato,
+                    "objeto": objeto,
+                    "tipo_contrato": tipo_contrato,
+                    "estado_contrato": estado_contrato,
+                    "valor_inicial": valor_inicial,
+                    "valor_total": valor_total,
+                    "fecha_suscripcion": fecha_suscripcion,
+                    "fecha_inicio": fecha_inicio,
+                    "fecha_fin": fecha_fin,
+                    "contratista_id": int(contratista_id) if contratista_id else None,
+                    "supervisor_id": int(supervisor_id) if supervisor_id else None,
+                    "observaciones": observaciones,
+                    "activo": True
+                }
+                cur.close()
+                conn.close()
+                return render_template(
+                    "contract_form.html",
+                    title="Nuevo Contrato",
+                    contract=contract,
+                    third_parties=third_parties,
+                    is_edit=False
+                )
+
+            cur.execute("SELECT id FROM contracts WHERE numero_contrato = %s", (numero_contrato,))
+            existing = cur.fetchone()
+
+            if existing:
+                flash("Ya existe un contrato con ese número.", "error")
+                contract = {
+                    "numero_contrato": numero_contrato,
+                    "objeto": objeto,
+                    "tipo_contrato": tipo_contrato,
+                    "estado_contrato": estado_contrato,
+                    "valor_inicial": valor_inicial,
+                    "valor_total": valor_total,
+                    "fecha_suscripcion": fecha_suscripcion,
+                    "fecha_inicio": fecha_inicio,
+                    "fecha_fin": fecha_fin,
+                    "contratista_id": int(contratista_id) if contratista_id else None,
+                    "supervisor_id": int(supervisor_id) if supervisor_id else None,
+                    "observaciones": observaciones,
+                    "activo": True
+                }
+                cur.close()
+                conn.close()
+                return render_template(
+                    "contract_form.html",
+                    title="Nuevo Contrato",
+                    contract=contract,
+                    third_parties=third_parties,
+                    is_edit=False
+                )
+
+            cur.execute("""
+                INSERT INTO contracts (
+                    numero_contrato, objeto, tipo_contrato, estado_contrato,
+                    valor_inicial, valor_total, fecha_suscripcion, fecha_inicio, fecha_fin,
+                    contratista_id, supervisor_id, usuario_creador_id, observaciones, activo
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+            """, (
+                numero_contrato, objeto, tipo_contrato, estado_contrato,
+                valor_inicial, valor_total, fecha_suscripcion, fecha_inicio, fecha_fin,
+                contratista_id, supervisor_id if supervisor_id else None,
+                session.get("user_id"), observaciones
+            ))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            flash("Contrato creado correctamente.", "success")
+            return redirect(url_for("list_contracts"))
+
+        cur.close()
+        conn.close()
+        return render_template(
+            "contract_form.html",
+            title="Nuevo Contrato",
+            contract=None,
+            third_parties=third_parties,
+            is_edit=False
+        )
+
+    except Exception as e:
+        return f"Error al crear contrato: {str(e)}"
+
+
+@app.route("/contracts/<int:contract_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_contract(contract_id):
+    try:
+        create_contracts_table_if_needed()
+        create_third_parties_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id, nombre, tipo_tercero FROM third_parties WHERE estado = TRUE ORDER BY nombre")
+        third_parties = cur.fetchall()
+
+        cur.execute("SELECT * FROM contracts WHERE id = %s", (contract_id,))
+        contract = cur.fetchone()
+
+        if not contract:
+            cur.close()
+            conn.close()
+            return "Contrato no encontrado."
+
+        if request.method == "POST":
+            numero_contrato = request.form.get("numero_contrato", "").strip()
+            objeto = request.form.get("objeto", "").strip()
+            tipo_contrato = request.form.get("tipo_contrato", "").strip()
+            estado_contrato = request.form.get("estado_contrato", "").strip()
+            valor_inicial = request.form.get("valor_inicial", "0").strip()
+            valor_total = request.form.get("valor_total", "0").strip()
+            fecha_suscripcion = request.form.get("fecha_suscripcion") or None
+            fecha_inicio = request.form.get("fecha_inicio") or None
+            fecha_fin = request.form.get("fecha_fin") or None
+            contratista_id = request.form.get("contratista_id", "").strip()
+            supervisor_id = request.form.get("supervisor_id") or None
+            observaciones = request.form.get("observaciones", "").strip()
+            activo_form = request.form.get("activo", "activo")
+            activo_bool = True if activo_form == "activo" else False
+
+            errors = validate_contract_form(
+                numero_contrato, objeto, tipo_contrato, estado_contrato,
+                valor_inicial, valor_total, contratista_id
+            )
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+                contract["numero_contrato"] = numero_contrato
+                contract["objeto"] = objeto
+                contract["tipo_contrato"] = tipo_contrato
+                contract["estado_contrato"] = estado_contrato
+                contract["valor_inicial"] = valor_inicial
+                contract["valor_total"] = valor_total
+                contract["fecha_suscripcion"] = fecha_suscripcion
+                contract["fecha_inicio"] = fecha_inicio
+                contract["fecha_fin"] = fecha_fin
+                contract["contratista_id"] = int(contratista_id) if contratista_id else None
+                contract["supervisor_id"] = int(supervisor_id) if supervisor_id else None
+                contract["observaciones"] = observaciones
+                contract["activo"] = activo_bool
+                cur.close()
+                conn.close()
+                return render_template(
+                    "contract_form.html",
+                    title="Editar Contrato",
+                    contract=contract,
+                    third_parties=third_parties,
+                    is_edit=True
+                )
+
+            cur.execute("SELECT id FROM contracts WHERE numero_contrato = %s AND id <> %s", (numero_contrato, contract_id))
+            existing = cur.fetchone()
+
+            if existing:
+                flash("Ya existe otro contrato con ese número.", "error")
+                contract["numero_contrato"] = numero_contrato
+                contract["objeto"] = objeto
+                contract["tipo_contrato"] = tipo_contrato
+                contract["estado_contrato"] = estado_contrato
+                contract["valor_inicial"] = valor_inicial
+                contract["valor_total"] = valor_total
+                contract["fecha_suscripcion"] = fecha_suscripcion
+                contract["fecha_inicio"] = fecha_inicio
+                contract["fecha_fin"] = fecha_fin
+                contract["contratista_id"] = int(contratista_id) if contratista_id else None
+                contract["supervisor_id"] = int(supervisor_id) if supervisor_id else None
+                contract["observaciones"] = observaciones
+                contract["activo"] = activo_bool
+                cur.close()
+                conn.close()
+                return render_template(
+                    "contract_form.html",
+                    title="Editar Contrato",
+                    contract=contract,
+                    third_parties=third_parties,
+                    is_edit=True
+                )
+
+            cur.execute("""
+                UPDATE contracts
+                SET numero_contrato = %s,
+                    objeto = %s,
+                    tipo_contrato = %s,
+                    estado_contrato = %s,
+                    valor_inicial = %s,
+                    valor_total = %s,
+                    fecha_suscripcion = %s,
+                    fecha_inicio = %s,
+                    fecha_fin = %s,
+                    contratista_id = %s,
+                    supervisor_id = %s,
+                    observaciones = %s,
+                    activo = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (
+                numero_contrato, objeto, tipo_contrato, estado_contrato,
+                valor_inicial, valor_total, fecha_suscripcion, fecha_inicio, fecha_fin,
+                contratista_id, supervisor_id if supervisor_id else None,
+                observaciones, activo_bool, contract_id
+            ))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            flash("Contrato actualizado correctamente.", "success")
+            return redirect(url_for("list_contracts"))
+
+        cur.close()
+        conn.close()
+        return render_template(
+            "contract_form.html",
+            title="Editar Contrato",
+            contract=contract,
+            third_parties=third_parties,
+            is_edit=True
+        )
+
+    except Exception as e:
+        return f"Error al editar contrato: {str(e)}"
+
+
+@app.route("/contracts/<int:contract_id>/toggle-status", methods=["POST"])
+@login_required
+def toggle_contract_status(contract_id):
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id, activo FROM contracts WHERE id = %s", (contract_id,))
+        contract = cur.fetchone()
+
+        if not contract:
+            cur.close()
+            conn.close()
+            flash("Contrato no encontrado.", "error")
+            return redirect(url_for("list_contracts"))
+
+        new_status = not contract["activo"]
+
+        cur.execute("""
+            UPDATE contracts
+            SET activo = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (new_status, contract_id))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if new_status:
+            flash("Contrato activado correctamente.", "success")
+        else:
+            flash("Contrato desactivado correctamente.", "success")
+
+        return redirect(url_for("list_contracts"))
+
+    except Exception as e:
+        return f"Error al cambiar estado del contrato: {str(e)}"
 
 
 if __name__ == "__main__":
