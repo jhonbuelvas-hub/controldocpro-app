@@ -18,6 +18,11 @@ ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg"}
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+COMMUNICATIONS_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "communications")
+COMMUNICATIONS_ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg"}
+
+os.makedirs(COMMUNICATIONS_UPLOAD_DIR, exist_ok=True)
+
 app = Flask(__name__, template_folder=TEMPLATES_DIR)
 app.secret_key = os.environ.get("SECRET_KEY", "controldocpro-dev-key")
 
@@ -45,6 +50,231 @@ def login_required(view_func):
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def allowed_communication_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in COMMUNICATIONS_ALLOWED_EXTENSIONS
+
+
+def generate_radicado(tipo_origen):
+    """
+    Genera radicados tipo:
+    REC-2026-000001
+    ENV-2026-000001
+    INT-2026-000001
+    """
+    year = datetime.now().year
+
+    prefix_map = {
+        "ENTRADA": "REC",
+        "SALIDA": "ENV",
+        "INTERNA": "INT"
+    }
+
+    prefix = prefix_map.get(tipo_origen, "COM")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM communications
+        WHERE EXTRACT(YEAR FROM fecha_radicado) = %s
+          AND tipo_origen = %s
+    """, (year, tipo_origen))
+
+    count = cur.fetchone()[0] or 0
+    next_number = count + 1
+
+    cur.close()
+    conn.close()
+
+    return f"{prefix}-{year}-{str(next_number).zfill(6)}"
+
+
+def validate_communication_form(tipo_origen, tipo_comunicacion, asunto, department_id, requiere_respuesta, fecha_limite_respuesta):
+    errors = []
+
+    tipos_origen_validos = ["ENTRADA", "SALIDA", "INTERNA"]
+    tipos_comunicacion_validos = [
+        "OFICIO", "CARTA", "MEMORANDO", "CIRCULAR", "NOTIFICACION",
+        "DERECHO_PETICION", "PQRS", "SOLICITUD", "RESPUESTA",
+        "REQUERIMIENTO", "OTRO"
+    ]
+
+    if tipo_origen not in tipos_origen_validos:
+        errors.append("Debe seleccionar un origen válido.")
+
+    if tipo_comunicacion not in tipos_comunicacion_validos:
+        errors.append("Debe seleccionar un tipo de comunicación válido.")
+
+    if not asunto or len(asunto.strip()) < 5:
+        errors.append("El asunto es obligatorio y debe tener al menos 5 caracteres.")
+
+    if not department_id:
+        errors.append("Debe seleccionar un departamento.")
+
+    if requiere_respuesta == "SI" and not fecha_limite_respuesta:
+        errors.append("Debe indicar la fecha límite de respuesta cuando la comunicación requiere respuesta.")
+
+    return errors
+
+def create_departments_table_if_needed():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS departments (
+            id SERIAL PRIMARY KEY,
+            nombre VARCHAR(150) NOT NULL UNIQUE,
+            descripcion TEXT,
+            activo BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def create_communications_table_if_needed():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS communications (
+            id SERIAL PRIMARY KEY,
+            radicado VARCHAR(50) NOT NULL UNIQUE,
+            tipo_origen VARCHAR(20) NOT NULL,
+            tipo_comunicacion VARCHAR(50) NOT NULL,
+            canal VARCHAR(50),
+
+            asunto VARCHAR(255) NOT NULL,
+            resumen TEXT,
+            observaciones TEXT,
+
+            remitente_nombre VARCHAR(200),
+            remitente_empresa VARCHAR(200),
+            remitente_identificacion VARCHAR(100),
+            remitente_email VARCHAR(150),
+            remitente_telefono VARCHAR(50),
+            remitente_direccion VARCHAR(255),
+            remitente_ciudad VARCHAR(100),
+
+            destinatario_nombre VARCHAR(200),
+            destinatario_empresa VARCHAR(200),
+            destinatario_email VARCHAR(150),
+            destinatario_telefono VARCHAR(50),
+            destinatario_direccion VARCHAR(255),
+            destinatario_ciudad VARCHAR(100),
+
+            department_id INTEGER,
+            created_by INTEGER,
+            assigned_to INTEGER,
+            response_owner_id INTEGER,
+
+            third_party_id INTEGER,
+            contract_id INTEGER,
+            parent_communication_id INTEGER,
+
+            prioridad VARCHAR(20) DEFAULT 'MEDIA',
+            estado VARCHAR(30) DEFAULT 'RADICADA',
+            confidencialidad VARCHAR(20) DEFAULT 'NORMAL',
+
+            requiere_respuesta BOOLEAN DEFAULT TRUE,
+            fecha_recepcion TIMESTAMP,
+            fecha_radicado TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            fecha_asignacion TIMESTAMP,
+            fecha_limite_respuesta TIMESTAMP,
+            fecha_respuesta TIMESTAMP,
+            fecha_cierre TIMESTAMP,
+
+            numero_guia VARCHAR(100),
+            medio_envio VARCHAR(100),
+
+            activo BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            CONSTRAINT fk_communications_department
+                FOREIGN KEY (department_id) REFERENCES departments(id),
+
+            CONSTRAINT fk_communications_created_by
+                FOREIGN KEY (created_by) REFERENCES users(id),
+
+            CONSTRAINT fk_communications_assigned_to
+                FOREIGN KEY (assigned_to) REFERENCES users(id),
+
+            CONSTRAINT fk_communications_response_owner
+                FOREIGN KEY (response_owner_id) REFERENCES users(id),
+
+            CONSTRAINT fk_communications_third_party
+                FOREIGN KEY (third_party_id) REFERENCES third_parties(id),
+
+            CONSTRAINT fk_communications_contract
+                FOREIGN KEY (contract_id) REFERENCES contracts(id),
+
+            CONSTRAINT fk_communications_parent
+                FOREIGN KEY (parent_communication_id) REFERENCES communications(id)
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS communication_files (
+            id SERIAL PRIMARY KEY,
+            communication_id INTEGER NOT NULL,
+            tipo_archivo VARCHAR(30) NOT NULL,
+            nombre_original VARCHAR(255) NOT NULL,
+            nombre_guardado VARCHAR(255) NOT NULL,
+            ruta_archivo VARCHAR(500) NOT NULL,
+            extension_archivo VARCHAR(20),
+            tamano_archivo INTEGER,
+            version VARCHAR(20) DEFAULT '1.0',
+            es_principal BOOLEAN DEFAULT FALSE,
+            uploaded_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            CONSTRAINT fk_communication_files_communication
+                FOREIGN KEY (communication_id) REFERENCES communications(id) ON DELETE CASCADE,
+
+            CONSTRAINT fk_communication_files_uploaded_by
+                FOREIGN KEY (uploaded_by) REFERENCES users(id)
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS communication_tracking (
+            id SERIAL PRIMARY KEY,
+            communication_id INTEGER NOT NULL,
+            accion VARCHAR(50) NOT NULL,
+            detalle TEXT,
+            usuario_id INTEGER,
+            department_id INTEGER,
+            estado_anterior VARCHAR(30),
+            estado_nuevo VARCHAR(30),
+            assigned_to_anterior INTEGER,
+            assigned_to_nuevo INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            CONSTRAINT fk_tracking_communication
+                FOREIGN KEY (communication_id) REFERENCES communications(id) ON DELETE CASCADE,
+
+            CONSTRAINT fk_tracking_user
+                FOREIGN KEY (usuario_id) REFERENCES users(id),
+
+            CONSTRAINT fk_tracking_department
+                FOREIGN KEY (department_id) REFERENCES departments(id),
+
+            CONSTRAINT fk_tracking_assigned_old
+                FOREIGN KEY (assigned_to_anterior) REFERENCES users(id),
+
+            CONSTRAINT fk_tracking_assigned_new
+                FOREIGN KEY (assigned_to_nuevo) REFERENCES users(id)
+        );
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    
 def create_contract_documents_table_if_needed():
     conn = get_connection()
     cur = conn.cursor()
@@ -140,6 +370,50 @@ def create_contracts_table_if_needed():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def register_communication_tracking(
+    communication_id,
+    accion,
+    detalle=None,
+    usuario_id=None,
+    department_id=None,
+    estado_anterior=None,
+    estado_nuevo=None,
+    assigned_to_anterior=None,
+    assigned_to_nuevo=None
+):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO communication_tracking (
+            communication_id,
+            accion,
+            detalle,
+            usuario_id,
+            department_id,
+            estado_anterior,
+            estado_nuevo,
+            assigned_to_anterior,
+            assigned_to_nuevo
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        communication_id,
+        accion,
+        detalle,
+        usuario_id,
+        department_id,
+        estado_anterior,
+        estado_nuevo,
+        assigned_to_anterior,
+        assigned_to_nuevo
+    ))
+
     conn.commit()
     cur.close()
     conn.close()
@@ -349,6 +623,646 @@ def dashboard():
         return f"Error en dashboard: {str(e)}"
 
     
+@app.route("/create-communications-tables")
+@login_required
+def create_communications_tables():
+    try:
+        create_departments_table_if_needed()
+        create_communications_table_if_needed()
+        return "Tablas del módulo de comunicaciones creadas correctamente 🚀"
+    except Exception as e:
+        return f"Error al crear tablas del módulo de comunicaciones: {str(e)}"
+
+@app.route("/communications")
+@login_required
+def list_communications():
+    try:
+        create_departments_table_if_needed()
+        create_communications_table_if_needed()
+
+        search = request.args.get("search", "").strip()
+        tipo_origen = request.args.get("tipo_origen", "").strip()
+        estado = request.args.get("estado", "").strip()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = """
+            SELECT
+                c.id,
+                c.radicado,
+                c.tipo_origen,
+                c.tipo_comunicacion,
+                c.asunto,
+                c.prioridad,
+                c.estado,
+                c.fecha_radicado,
+                c.fecha_limite_respuesta,
+                d.nombre AS department_name,
+                u.full_name AS assigned_to_name
+            FROM communications c
+            LEFT JOIN departments d ON c.department_id = d.id
+            LEFT JOIN users u ON c.assigned_to = u.id
+            WHERE c.activo = TRUE
+        """
+        params = []
+
+        if search:
+            query += """
+                AND (
+                    LOWER(c.radicado) LIKE %s
+                    OR LOWER(c.asunto) LIKE %s
+                    OR LOWER(c.tipo_comunicacion) LIKE %s
+                )
+            """
+            like_search = f"%{search.lower()}%"
+            params.extend([like_search, like_search, like_search])
+
+        if tipo_origen:
+            query += " AND c.tipo_origen = %s"
+            params.append(tipo_origen)
+
+        if estado:
+            query += " AND c.estado = %s"
+            params.append(estado)
+
+        query += " ORDER BY c.id DESC"
+
+        cur.execute(query, params)
+        communications = cur.fetchall()
+
+        cur.execute("SELECT id, nombre FROM departments WHERE activo = TRUE ORDER BY nombre")
+        departments = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        return render_template(
+            "communications.html",
+            communications=communications,
+            departments=departments,
+            search=search,
+            tipo_origen=tipo_origen,
+            estado=estado
+        )
+
+    except Exception as e:
+        return f"Error al listar comunicaciones: {str(e)}"
+
+@app.route("/communications/new", methods=["GET", "POST"])
+@login_required
+def new_communication():
+    try:
+        create_departments_table_if_needed()
+        create_communications_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id, nombre FROM departments WHERE activo = TRUE ORDER BY nombre")
+        departments = cur.fetchall()
+
+        cur.execute("SELECT id, full_name FROM users WHERE active = TRUE ORDER BY full_name")
+        users = cur.fetchall()
+
+        cur.execute("SELECT id, numero_contrato FROM contracts WHERE activo = TRUE ORDER BY numero_contrato")
+        contracts = cur.fetchall()
+
+        cur.execute("SELECT id, nombre FROM third_parties WHERE activo = TRUE ORDER BY nombre")
+        third_parties = cur.fetchall()
+
+        if request.method == "POST":
+            tipo_origen = request.form.get("tipo_origen", "").strip()
+            tipo_comunicacion = request.form.get("tipo_comunicacion", "").strip()
+            canal = request.form.get("canal", "").strip()
+            asunto = request.form.get("asunto", "").strip()
+            resumen = request.form.get("resumen", "").strip()
+            observaciones = request.form.get("observaciones", "").strip()
+
+            remitente_nombre = request.form.get("remitente_nombre", "").strip()
+            remitente_empresa = request.form.get("remitente_empresa", "").strip()
+            remitente_identificacion = request.form.get("remitente_identificacion", "").strip()
+            remitente_email = request.form.get("remitente_email", "").strip()
+            remitente_telefono = request.form.get("remitente_telefono", "").strip()
+            remitente_direccion = request.form.get("remitente_direccion", "").strip()
+            remitente_ciudad = request.form.get("remitente_ciudad", "").strip()
+
+            destinatario_nombre = request.form.get("destinatario_nombre", "").strip()
+            destinatario_empresa = request.form.get("destinatario_empresa", "").strip()
+            destinatario_email = request.form.get("destinatario_email", "").strip()
+            destinatario_telefono = request.form.get("destinatario_telefono", "").strip()
+            destinatario_direccion = request.form.get("destinatario_direccion", "").strip()
+            destinatario_ciudad = request.form.get("destinatario_ciudad", "").strip()
+
+            department_id = request.form.get("department_id") or None
+            assigned_to = request.form.get("assigned_to") or None
+            response_owner_id = request.form.get("response_owner_id") or None
+            third_party_id = request.form.get("third_party_id") or None
+            contract_id = request.form.get("contract_id") or None
+            prioridad = request.form.get("prioridad", "MEDIA").strip()
+            estado = request.form.get("estado", "RADICADA").strip()
+            confidencialidad = request.form.get("confidencialidad", "NORMAL").strip()
+            requiere_respuesta = request.form.get("requiere_respuesta", "SI").strip()
+            fecha_recepcion = request.form.get("fecha_recepcion") or None
+            fecha_limite_respuesta = request.form.get("fecha_limite_respuesta") or None
+            numero_guia = request.form.get("numero_guia", "").strip()
+            medio_envio = request.form.get("medio_envio", "").strip()
+
+            archivo_principal = request.files.get("archivo_principal")
+
+            errors = validate_communication_form(
+                tipo_origen,
+                tipo_comunicacion,
+                asunto,
+                department_id,
+                requiere_respuesta,
+                fecha_limite_respuesta
+            )
+
+            if archivo_principal and archivo_principal.filename:
+                if not allowed_communication_file(archivo_principal.filename):
+                    errors.append("El archivo principal tiene un formato no permitido.")
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+
+                communication = request.form.to_dict()
+
+                cur.close()
+                conn.close()
+
+                return render_template(
+                    "communication_form.html",
+                    title="Nueva comunicación",
+                    communication=communication,
+                    departments=departments,
+                    users=users,
+                    contracts=contracts,
+                    third_parties=third_parties,
+                    is_edit=False
+                )
+
+            radicado = generate_radicado(tipo_origen)
+
+            cur.execute("""
+                INSERT INTO communications (
+                    radicado,
+                    tipo_origen,
+                    tipo_comunicacion,
+                    canal,
+                    asunto,
+                    resumen,
+                    observaciones,
+                    remitente_nombre,
+                    remitente_empresa,
+                    remitente_identificacion,
+                    remitente_email,
+                    remitente_telefono,
+                    remitente_direccion,
+                    remitente_ciudad,
+                    destinatario_nombre,
+                    destinatario_empresa,
+                    destinatario_email,
+                    destinatario_telefono,
+                    destinatario_direccion,
+                    destinatario_ciudad,
+                    department_id,
+                    created_by,
+                    assigned_to,
+                    response_owner_id,
+                    third_party_id,
+                    contract_id,
+                    prioridad,
+                    estado,
+                    confidencialidad,
+                    requiere_respuesta,
+                    fecha_recepcion,
+                    fecha_asignacion,
+                    fecha_limite_respuesta,
+                    numero_guia,
+                    medio_envio
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s
+                )
+                RETURNING id
+            """, (
+                radicado,
+                tipo_origen,
+                tipo_comunicacion,
+                canal,
+                asunto,
+                resumen,
+                observaciones,
+                remitente_nombre or None,
+                remitente_empresa or None,
+                remitente_identificacion or None,
+                remitente_email or None,
+                remitente_telefono or None,
+                remitente_direccion or None,
+                remitente_ciudad or None,
+                destinatario_nombre or None,
+                destinatario_empresa or None,
+                destinatario_email or None,
+                destinatario_telefono or None,
+                destinatario_direccion or None,
+                destinatario_ciudad or None,
+                department_id,
+                session.get("user_id"),
+                assigned_to,
+                response_owner_id,
+                third_party_id,
+                contract_id,
+                prioridad,
+                estado,
+                confidencialidad,
+                True if requiere_respuesta == "SI" else False,
+                fecha_recepcion,
+                datetime.now() if assigned_to else None,
+                fecha_limite_respuesta,
+                numero_guia or None,
+                medio_envio or None
+            ))
+
+            communication_id = cur.fetchone()["id"]
+            conn.commit()
+
+            if archivo_principal and archivo_principal.filename:
+                original_name = secure_filename(archivo_principal.filename)
+                extension = original_name.rsplit(".", 1)[1].lower()
+                unique_name = f"{uuid.uuid4().hex}.{extension}"
+                file_path = os.path.join(COMMUNICATIONS_UPLOAD_DIR, unique_name)
+
+                archivo_principal.save(file_path)
+                file_size = os.path.getsize(file_path)
+
+                cur.execute("""
+                    INSERT INTO communication_files (
+                        communication_id,
+                        tipo_archivo,
+                        nombre_original,
+                        nombre_guardado,
+                        ruta_archivo,
+                        extension_archivo,
+                        tamano_archivo,
+                        es_principal,
+                        uploaded_by
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    communication_id,
+                    "PRINCIPAL",
+                    original_name,
+                    unique_name,
+                    file_path,
+                    extension,
+                    file_size,
+                    True,
+                    session.get("user_id")
+                ))
+                conn.commit()
+
+            cur.close()
+            conn.close()
+
+            register_communication_tracking(
+                communication_id=communication_id,
+                accion="CREADA",
+                detalle=f"Comunicación {radicado} creada",
+                usuario_id=session.get("user_id"),
+                department_id=department_id,
+                estado_anterior=None,
+                estado_nuevo=estado,
+                assigned_to_anterior=None,
+                assigned_to_nuevo=assigned_to
+            )
+
+            flash("Comunicación creada correctamente.", "success")
+            return redirect(url_for("list_communications"))
+
+        cur.close()
+        conn.close()
+
+        return render_template(
+            "communication_form.html",
+            title="Nueva comunicación",
+            communication=None,
+            departments=departments,
+            users=users,
+            contracts=contracts,
+            third_parties=third_parties,
+            is_edit=False
+        )
+
+    except Exception as e:
+        return f"Error al crear comunicación: {str(e)}"
+
+
+@app.route("/communications/<int:communication_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_communication(communication_id):
+    try:
+        create_departments_table_if_needed()
+        create_communications_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id, nombre FROM departments WHERE activo = TRUE ORDER BY nombre")
+        departments = cur.fetchall()
+
+        cur.execute("SELECT id, full_name FROM users WHERE active = TRUE ORDER BY full_name")
+        users = cur.fetchall()
+
+        cur.execute("SELECT id, numero_contrato FROM contracts WHERE activo = TRUE ORDER BY numero_contrato")
+        contracts = cur.fetchall()
+
+        cur.execute("SELECT id, nombre FROM third_parties WHERE activo = TRUE ORDER BY nombre")
+        third_parties = cur.fetchall()
+
+        cur.execute("SELECT * FROM communications WHERE id = %s AND activo = TRUE", (communication_id,))
+        communication = cur.fetchone()
+
+        if not communication:
+            cur.close()
+            conn.close()
+            return "Comunicación no encontrada."
+
+        if request.method == "POST":
+            estado_anterior = communication["estado"]
+            assigned_to_anterior = communication["assigned_to"]
+
+            tipo_origen = request.form.get("tipo_origen", "").strip()
+            tipo_comunicacion = request.form.get("tipo_comunicacion", "").strip()
+            canal = request.form.get("canal", "").strip()
+            asunto = request.form.get("asunto", "").strip()
+            resumen = request.form.get("resumen", "").strip()
+            observaciones = request.form.get("observaciones", "").strip()
+
+            remitente_nombre = request.form.get("remitente_nombre", "").strip()
+            remitente_empresa = request.form.get("remitente_empresa", "").strip()
+            remitente_identificacion = request.form.get("remitente_identificacion", "").strip()
+            remitente_email = request.form.get("remitente_email", "").strip()
+            remitente_telefono = request.form.get("remitente_telefono", "").strip()
+            remitente_direccion = request.form.get("remitente_direccion", "").strip()
+            remitente_ciudad = request.form.get("remitente_ciudad", "").strip()
+
+            destinatario_nombre = request.form.get("destinatario_nombre", "").strip()
+            destinatario_empresa = request.form.get("destinatario_empresa", "").strip()
+            destinatario_email = request.form.get("destinatario_email", "").strip()
+            destinatario_telefono = request.form.get("destinatario_telefono", "").strip()
+            destinatario_direccion = request.form.get("destinatario_direccion", "").strip()
+            destinatario_ciudad = request.form.get("destinatario_ciudad", "").strip()
+
+            department_id = request.form.get("department_id") or None
+            assigned_to = request.form.get("assigned_to") or None
+            response_owner_id = request.form.get("response_owner_id") or None
+            third_party_id = request.form.get("third_party_id") or None
+            contract_id = request.form.get("contract_id") or None
+            prioridad = request.form.get("prioridad", "MEDIA").strip()
+            estado = request.form.get("estado", "RADICADA").strip()
+            confidencialidad = request.form.get("confidencialidad", "NORMAL").strip()
+            requiere_respuesta = request.form.get("requiere_respuesta", "SI").strip()
+            fecha_recepcion = request.form.get("fecha_recepcion") or None
+            fecha_limite_respuesta = request.form.get("fecha_limite_respuesta") or None
+            numero_guia = request.form.get("numero_guia", "").strip()
+            medio_envio = request.form.get("medio_envio", "").strip()
+
+            errors = validate_communication_form(
+                tipo_origen,
+                tipo_comunicacion,
+                asunto,
+                department_id,
+                requiere_respuesta,
+                fecha_limite_respuesta
+            )
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+
+                communication = request.form.to_dict()
+                communication["id"] = communication_id
+
+                cur.close()
+                conn.close()
+
+                return render_template(
+                    "communication_form.html",
+                    title="Editar comunicación",
+                    communication=communication,
+                    departments=departments,
+                    users=users,
+                    contracts=contracts,
+                    third_parties=third_parties,
+                    is_edit=True
+                )
+
+            cur.execute("""
+                UPDATE communications
+                SET tipo_origen = %s,
+                    tipo_comunicacion = %s,
+                    canal = %s,
+                    asunto = %s,
+                    resumen = %s,
+                    observaciones = %s,
+                    remitente_nombre = %s,
+                    remitente_empresa = %s,
+                    remitente_identificacion = %s,
+                    remitente_email = %s,
+                    remitente_telefono = %s,
+                    remitente_direccion = %s,
+                    remitente_ciudad = %s,
+                    destinatario_nombre = %s,
+                    destinatario_empresa = %s,
+                    destinatario_email = %s,
+                    destinatario_telefono = %s,
+                    destinatario_direccion = %s,
+                    destinatario_ciudad = %s,
+                    department_id = %s,
+                    assigned_to = %s,
+                    response_owner_id = %s,
+                    third_party_id = %s,
+                    contract_id = %s,
+                    prioridad = %s,
+                    estado = %s,
+                    confidencialidad = %s,
+                    requiere_respuesta = %s,
+                    fecha_recepcion = %s,
+                    fecha_limite_respuesta = %s,
+                    numero_guia = %s,
+                    medio_envio = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (
+                tipo_origen,
+                tipo_comunicacion,
+                canal,
+                asunto,
+                resumen,
+                observaciones,
+                remitente_nombre or None,
+                remitente_empresa or None,
+                remitente_identificacion or None,
+                remitente_email or None,
+                remitente_telefono or None,
+                remitente_direccion or None,
+                remitente_ciudad or None,
+                destinatario_nombre or None,
+                destinatario_empresa or None,
+                destinatario_email or None,
+                destinatario_telefono or None,
+                destinatario_direccion or None,
+                destinatario_ciudad or None,
+                department_id,
+                assigned_to,
+                response_owner_id,
+                third_party_id,
+                contract_id,
+                prioridad,
+                estado,
+                confidencialidad,
+                True if requiere_respuesta == "SI" else False,
+                fecha_recepcion,
+                fecha_limite_respuesta,
+                numero_guia or None,
+                medio_envio or None,
+                communication_id
+            ))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            accion = "EDITADA"
+            detalle = f"Comunicación actualizada. Estado: {estado_anterior} -> {estado}"
+
+            if str(assigned_to_anterior or "") != str(assigned_to or ""):
+                accion = "REASIGNADA"
+                detalle = "Se actualizó el responsable de la comunicación."
+
+            register_communication_tracking(
+                communication_id=communication_id,
+                accion=accion,
+                detalle=detalle,
+                usuario_id=session.get("user_id"),
+                department_id=department_id,
+                estado_anterior=estado_anterior,
+                estado_nuevo=estado,
+                assigned_to_anterior=assigned_to_anterior,
+                assigned_to_nuevo=assigned_to
+            )
+
+            flash("Comunicación actualizada correctamente.", "success")
+            return redirect(url_for("list_communications"))
+
+        cur.close()
+        conn.close()
+
+        return render_template(
+            "communication_form.html",
+            title="Editar comunicación",
+            communication=communication,
+            departments=departments,
+            users=users,
+            contracts=contracts,
+            third_parties=third_parties,
+            is_edit=True
+        )
+
+    except Exception as e:
+        return f"Error al editar comunicación: {str(e)}"
+
+@app.route("/communications/<int:communication_id>/delete", methods=["POST"])
+@login_required
+def delete_communication(communication_id):
+    try:
+        create_communications_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id, estado, department_id, assigned_to FROM communications WHERE id = %s", (communication_id,))
+        communication = cur.fetchone()
+
+        if not communication:
+            cur.close()
+            conn.close()
+            flash("Comunicación no encontrada.", "error")
+            return redirect(url_for("list_communications"))
+
+        cur.execute("""
+            UPDATE communications
+            SET activo = FALSE,
+                estado = 'ANULADA',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (communication_id,))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        register_communication_tracking(
+            communication_id=communication_id,
+            accion="ANULADA",
+            detalle="Comunicación anulada lógicamente.",
+            usuario_id=session.get("user_id"),
+            department_id=communication["department_id"],
+            estado_anterior=communication["estado"],
+            estado_nuevo="ANULADA",
+            assigned_to_anterior=communication["assigned_to"],
+            assigned_to_nuevo=communication["assigned_to"]
+        )
+
+        flash("Comunicación anulada correctamente.", "success")
+        return redirect(url_for("list_communications"))
+
+    except Exception as e:
+        return f"Error al anular comunicación: {str(e)}"
+
+@app.route("/communications/<int:communication_id>/download-main")
+@login_required
+def download_communication_main_file(communication_id):
+    try:
+        create_communications_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT nombre_original, ruta_archivo
+            FROM communication_files
+            WHERE communication_id = %s
+              AND es_principal = TRUE
+            ORDER BY id DESC
+            LIMIT 1
+        """, (communication_id,))
+        file_record = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if not file_record:
+            return "No existe archivo principal para esta comunicación."
+
+        if not os.path.exists(file_record["ruta_archivo"]):
+            return "El archivo no existe en el servidor."
+
+        return send_file(
+            file_record["ruta_archivo"],
+            as_attachment=True,
+            download_name=file_record["nombre_original"]
+        )
+
+    except Exception as e:
+        return f"Error al descargar archivo principal: {str(e)}"
+
+
 
 
 @app.route("/users")
