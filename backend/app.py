@@ -4,17 +4,28 @@ import psycopg2
 
 app = Flask(__name__)
 
-# Toma la URL de la base de datos desde las variables de entorno de Render
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
+# Compatibilidad por si la URL viene en formato postgres://
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 
 def get_connection():
     if not DATABASE_URL:
         raise Exception("La variable de entorno DATABASE_URL no está configurada.")
     return psycopg2.connect(DATABASE_URL)
 
+
 @app.route("/")
 def home():
     return "ControlDocPro conectado 🚀"
+
+
+@app.route("/health")
+def health():
+    return "OK"
+
 
 @app.route("/test-db")
 def test_db():
@@ -28,6 +39,7 @@ def test_db():
         return f"Conexión exitosa a PostgreSQL: {result}"
     except Exception as e:
         return f"Error de conexión a la base de datos: {str(e)}"
+
 
 @app.route("/create-users-table")
 def create_users_table():
@@ -50,13 +62,15 @@ def create_users_table():
         """)
 
         conn.commit()
+        cur.close()
         conn.close()
 
         return "Tabla users creada correctamente 🚀"
 
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error al crear la tabla users: {str(e)}"
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False)
