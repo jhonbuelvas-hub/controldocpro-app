@@ -10,6 +10,10 @@ from werkzeug.utils import secure_filename
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "contract_documents")
+ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg"}
+
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR)
 app.secret_key = os.environ.get("SECRET_KEY", "controldocpro-dev-key")
@@ -35,6 +39,34 @@ def login_required(view_func):
         return view_func(*args, **kwargs)
     return wrapped_view
 
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def create_contract_documents_table_if_needed():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS contract_documents (
+            id SERIAL PRIMARY KEY,
+            contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+            tipo_documento VARCHAR(100) NOT NULL,
+            titulo VARCHAR(200) NOT NULL,
+            descripcion TEXT,
+            nombre_archivo_original VARCHAR(255) NOT NULL,
+            nombre_archivo_guardado VARCHAR(255) NOT NULL,
+            ruta_archivo VARCHAR(500) NOT NULL,
+            extension_archivo VARCHAR(20),
+            tamano_archivo INTEGER,
+            version VARCHAR(20) DEFAULT '1.0',
+            estado VARCHAR(30) DEFAULT 'ACTIVO',
+            usuario_cargue_id INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
 
 def create_users_table_if_needed():
     conn = get_connection()
@@ -949,6 +981,47 @@ def validate_contract_form(numero_contrato, objeto, tipo_contrato, estado_contra
 
     return errors
 
+def validate_contract_document_form(contract_id, tipo_documento, titulo, filename=None, is_edit=False):
+    errors = []
+
+    tipos_validos = [
+        "CONTRATO",
+        "ACTA_INICIO",
+        "ACTA_SUSPENSION",
+        "ACTA_REINICIO",
+        "ACTA_TERMINACION",
+        "ACTA_LIQUIDACION",
+        "OTROSI",
+        "POLIZA",
+        "INFORME",
+        "OTRO"
+    ]
+
+    if not contract_id:
+        errors.append("Debe seleccionar un contrato.")
+
+    if tipo_documento not in tipos_validos:
+        errors.append("Debe seleccionar un tipo de documento válido.")
+
+    if not titulo or len(titulo.strip()) < 3:
+        errors.append("El título es obligatorio y debe tener al menos 3 caracteres.")
+
+    if not is_edit and not filename:
+        errors.append("Debe seleccionar un archivo.")
+
+    if filename and not allowed_file(filename):
+        errors.append("El tipo de archivo no es permitido.")
+
+    return errors
+
+@app.route("/create-contract-documents-table")
+@login_required
+def create_contract_documents_table():
+    try:
+        create_contract_documents_table_if_needed()
+        return "Tabla contract_documents creada correctamente 🚀"
+    except Exception as e:
+        return f"Error al crear la tabla contract_documents: {str(e)}"
 
 @app.route("/create-contracts-table")
 @login_required
@@ -1338,6 +1411,412 @@ def toggle_contract_status(contract_id):
     except Exception as e:
         return f"Error al cambiar estado del contrato: {str(e)}"
 
+@app.route("/contract-documents")
+@login_required
+def list_contract_documents():
+    try:
+        create_contracts_table_if_needed()
+        create_contract_documents_table_if_needed()
+
+        search = request.args.get("search", "").strip()
+        tipo = request.args.get("tipo", "").strip()
+        contract_id = request.args.get("contract_id", "").strip()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = """
+            SELECT
+                cd.id,
+                cd.contract_id,
+                cd.tipo_documento,
+                cd.titulo,
+                cd.descripcion,
+                cd.nombre_archivo_original,
+                cd.version,
+                cd.estado,
+                cd.created_at,
+                c.numero_contrato,
+                tp.nombre AS contratista_nombre
+            FROM contract_documents cd
+            INNER JOIN contracts c ON cd.contract_id = c.id
+            INNER JOIN third_parties tp ON c.contratista_id = tp.id
+            WHERE 1=1
+        """
+        params = []
+
+        if search:
+            query += """
+                AND (
+                    LOWER(cd.titulo) LIKE %s
+                    OR LOWER(cd.tipo_documento) LIKE %s
+                    OR LOWER(c.numero_contrato) LIKE %s
+                    OR LOWER(tp.nombre) LIKE %s
+                )
+            """
+            like_value = f"%{search.lower()}%"
+            params.extend([like_value, like_value, like_value, like_value])
+
+        if tipo:
+            query += " AND cd.tipo_documento = %s"
+            params.append(tipo)
+
+        if contract_id:
+            query += " AND cd.contract_id = %s"
+            params.append(contract_id)
+
+        query += " ORDER BY cd.id DESC"
+
+        cur.execute(query, params)
+        documents = cur.fetchall()
+
+        cur.execute("""
+            SELECT id, numero_contrato
+            FROM contracts
+            WHERE activo = TRUE
+            ORDER BY numero_contrato
+        """)
+        contracts = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        return render_template(
+            "contract_documents.html",
+            documents=documents,
+            contracts=contracts,
+            search=search,
+            tipo=tipo,
+            contract_id=contract_id
+        )
+    except Exception as e:
+        return f"Error al listar documentos contractuales: {str(e)}"
+
+
+@app.route("/contract-documents/new", methods=["GET", "POST"])
+@login_required
+def new_contract_document():
+    try:
+        create_contracts_table_if_needed()
+        create_contract_documents_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT id, numero_contrato
+            FROM contracts
+            WHERE activo = TRUE
+            ORDER BY numero_contrato
+        """)
+        contracts = cur.fetchall()
+
+        if request.method == "POST":
+            contract_id = request.form.get("contract_id", "").strip()
+            tipo_documento = request.form.get("tipo_documento", "").strip()
+            titulo = request.form.get("titulo", "").strip()
+            descripcion = request.form.get("descripcion", "").strip()
+            version = request.form.get("version", "1.0").strip()
+            estado = request.form.get("estado", "ACTIVO").strip()
+            archivo = request.files.get("archivo")
+
+            filename = archivo.filename if archivo and archivo.filename else None
+
+            errors = validate_contract_document_form(
+                contract_id, tipo_documento, titulo, filename, is_edit=False
+            )
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+                document = {
+                    "contract_id": int(contract_id) if contract_id else None,
+                    "tipo_documento": tipo_documento,
+                    "titulo": titulo,
+                    "descripcion": descripcion,
+                    "version": version,
+                    "estado": estado
+                }
+                cur.close()
+                conn.close()
+                return render_template(
+                    "contract_document_form.html",
+                    title="Nuevo Documento Contractual",
+                    document=document,
+                    contracts=contracts,
+                    is_edit=False
+                )
+
+            original_name = secure_filename(archivo.filename)
+            extension = original_name.rsplit(".", 1)[1].lower()
+            unique_name = f"{uuid.uuid4().hex}.{extension}"
+            file_path = os.path.join(UPLOAD_DIR, unique_name)
+
+            archivo.save(file_path)
+            file_size = os.path.getsize(file_path)
+
+            cur.execute("""
+                INSERT INTO contract_documents (
+                    contract_id,
+                    tipo_documento,
+                    titulo,
+                    descripcion,
+                    nombre_archivo_original,
+                    nombre_archivo_guardado,
+                    ruta_archivo,
+                    extension_archivo,
+                    tamano_archivo,
+                    version,
+                    estado,
+                    usuario_cargue_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                contract_id,
+                tipo_documento,
+                titulo,
+                descripcion,
+                original_name,
+                unique_name,
+                file_path,
+                extension,
+                file_size,
+                version,
+                estado,
+                session.get("user_id")
+            ))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            flash("Documento contractual creado correctamente.", "success")
+            return redirect(url_for("list_contract_documents"))
+
+        cur.close()
+        conn.close()
+        return render_template(
+            "contract_document_form.html",
+            title="Nuevo Documento Contractual",
+            document=None,
+            contracts=contracts,
+            is_edit=False
+        )
+
+    except Exception as e:
+        return f"Error al crear documento contractual: {str(e)}"
+
+
+@app.route("/contract-documents/<int:document_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_contract_document(document_id):
+    try:
+        create_contracts_table_if_needed()
+        create_contract_documents_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT id, numero_contrato
+            FROM contracts
+            WHERE activo = TRUE
+            ORDER BY numero_contrato
+        """)
+        contracts = cur.fetchall()
+
+        cur.execute("SELECT * FROM contract_documents WHERE id = %s", (document_id,))
+        document = cur.fetchone()
+
+        if not document:
+            cur.close()
+            conn.close()
+            return "Documento contractual no encontrado."
+
+        if request.method == "POST":
+            contract_id = request.form.get("contract_id", "").strip()
+            tipo_documento = request.form.get("tipo_documento", "").strip()
+            titulo = request.form.get("titulo", "").strip()
+            descripcion = request.form.get("descripcion", "").strip()
+            version = request.form.get("version", "1.0").strip()
+            estado = request.form.get("estado", "ACTIVO").strip()
+            archivo = request.files.get("archivo")
+
+            filename = archivo.filename if archivo and archivo.filename else None
+
+            errors = validate_contract_document_form(
+                contract_id, tipo_documento, titulo, filename, is_edit=True
+            )
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+                document["contract_id"] = int(contract_id) if contract_id else None
+                document["tipo_documento"] = tipo_documento
+                document["titulo"] = titulo
+                document["descripcion"] = descripcion
+                document["version"] = version
+                document["estado"] = estado
+                cur.close()
+                conn.close()
+                return render_template(
+                    "contract_document_form.html",
+                    title="Editar Documento Contractual",
+                    document=document,
+                    contracts=contracts,
+                    is_edit=True
+                )
+
+            if archivo and archivo.filename:
+                if document["ruta_archivo"] and os.path.exists(document["ruta_archivo"]):
+                    os.remove(document["ruta_archivo"])
+
+                original_name = secure_filename(archivo.filename)
+                extension = original_name.rsplit(".", 1)[1].lower()
+                unique_name = f"{uuid.uuid4().hex}.{extension}"
+                file_path = os.path.join(UPLOAD_DIR, unique_name)
+
+                archivo.save(file_path)
+                file_size = os.path.getsize(file_path)
+
+                cur.execute("""
+                    UPDATE contract_documents
+                    SET contract_id = %s,
+                        tipo_documento = %s,
+                        titulo = %s,
+                        descripcion = %s,
+                        nombre_archivo_original = %s,
+                        nombre_archivo_guardado = %s,
+                        ruta_archivo = %s,
+                        extension_archivo = %s,
+                        tamano_archivo = %s,
+                        version = %s,
+                        estado = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (
+                    contract_id,
+                    tipo_documento,
+                    titulo,
+                    descripcion,
+                    original_name,
+                    unique_name,
+                    file_path,
+                    extension,
+                    file_size,
+                    version,
+                    estado,
+                    document_id
+                ))
+            else:
+                cur.execute("""
+                    UPDATE contract_documents
+                    SET contract_id = %s,
+                        tipo_documento = %s,
+                        titulo = %s,
+                        descripcion = %s,
+                        version = %s,
+                        estado = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (
+                    contract_id,
+                    tipo_documento,
+                    titulo,
+                    descripcion,
+                    version,
+                    estado,
+                    document_id
+                ))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            flash("Documento contractual actualizado correctamente.", "success")
+            return redirect(url_for("list_contract_documents"))
+
+        cur.close()
+        conn.close()
+        return render_template(
+            "contract_document_form.html",
+            title="Editar Documento Contractual",
+            document=document,
+            contracts=contracts,
+            is_edit=True
+        )
+
+    except Exception as e:
+        return f"Error al editar documento contractual: {str(e)}"
+
+
+@app.route("/contract-documents/<int:document_id>/download")
+@login_required
+def download_contract_document(document_id):
+    try:
+        create_contract_documents_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT nombre_archivo_original, ruta_archivo
+            FROM contract_documents
+            WHERE id = %s
+        """, (document_id,))
+        document = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if not document:
+            return "Documento no encontrado."
+
+        if not os.path.exists(document["ruta_archivo"]):
+            return "El archivo no existe en el servidor."
+
+        return send_file(
+            document["ruta_archivo"],
+            as_attachment=True,
+            download_name=document["nombre_archivo_original"]
+        )
+
+    except Exception as e:
+        return f"Error al descargar documento contractual: {str(e)}"
+
+
+@app.route("/contract-documents/<int:document_id>/delete", methods=["POST"])
+@login_required
+def delete_contract_document(document_id):
+    try:
+        create_contract_documents_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT ruta_archivo FROM contract_documents WHERE id = %s", (document_id,))
+        document = cur.fetchone()
+
+        if not document:
+            cur.close()
+            conn.close()
+            flash("Documento contractual no encontrado.", "error")
+            return redirect(url_for("list_contract_documents"))
+
+        if document["ruta_archivo"] and os.path.exists(document["ruta_archivo"]):
+            os.remove(document["ruta_archivo"])
+
+        cur.execute("DELETE FROM contract_documents WHERE id = %s", (document_id,))
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        flash("Documento contractual eliminado correctamente.", "success")
+        return redirect(url_for("list_contract_documents"))
+
+    except Exception as e:
+        return f"Error al eliminar documento contractual: {str(e)}"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
