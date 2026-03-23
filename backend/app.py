@@ -29,6 +29,34 @@ def test_db():
     except Exception as e:
         return f"Error de conexión a la base de datos: {str(e)}"
 
+@app.route("/create-users-table")
+def create_users_table():
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            nombre VARCHAR(100) NOT NULL,
+            email VARCHAR(150) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            rol VARCHAR(50) NOT NULL,
+            estado BOOLEAN DEFAULT TRUE,
+            ultimo_login TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        conn.commit()
+        conn.close()
+
+        return "Tabla users creada correctamente 🚀"
+
+    except Exception as e:
+        return f"Error: {e}"
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
