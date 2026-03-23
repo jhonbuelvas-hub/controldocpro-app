@@ -3,14 +3,17 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
+
+app = Flask(__name__, template_folder=TEMPLATES_DIR)
 app.secret_key = os.environ.get("SECRET_KEY", "controldocpro-dev-key")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
+    
 
 def get_connection():
     if not DATABASE_URL:
