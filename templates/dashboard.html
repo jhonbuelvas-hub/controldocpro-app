@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-8">
+
+    <div>
+        <h2 class="text-3xl font-bold text-slate-900">Dashboard</h2>
+        <p class="text-slate-600 mt-1">Resumen inicial de la operación del sistema.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div class="bg-white rounded-2xl shadow p-6">
+            <p class="text-sm text-slate-500">Total usuarios</p>
+            <h3 class="text-4xl font-bold mt-2">{{ total_users }}</h3>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+            <p class="text-sm text-slate-500">Usuarios activos</p>
+            <h3 class="text-4xl font-bold mt-2 text-green-600">{{ active_users }}</h3>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+            <p class="text-sm text-slate-500">Total terceros</p>
+            <h3 class="text-4xl font-bold mt-2">{{ total_third_parties }}</h3>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+            <p class="text-sm text-slate-500">Terceros activos</p>
+            <h3 class="text-4xl font-bold mt-2 text-indigo-600">{{ active_third_parties }}</h3>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl shadow overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200">
+                <h3 class="text-xl font-bold">Últimos usuarios</h3>
+            </div>
+            <div class="p-6">
+                {% if recent_users %}
+                    <div class="space-y-4">
+                        {% for user in recent_users %}
+                            <div class="border border-slate-200 rounded-xl p-4">
+                                <div class="font-semibold">{{ user.nombre }}</div>
+                                <div class="text-sm text-slate-600">{{ user.email }}</div>
+                                <div class="text-xs text-slate-500 mt-1">{{ user.rol }}</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-slate-500">No hay usuarios registrados.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200">
+                <h3 class="text-xl font-bold">Últimos terceros</h3>
+            </div>
+            <div class="p-6">
+                {% if recent_third_parties %}
+                    <div class="space-y-4">
+                        {% for third_party in recent_third_parties %}
+                            <div class="border border-slate-200 rounded-xl p-4">
+                                <div class="font-semibold">{{ third_party.nombre }}</div>
+                                <div class="text-sm text-slate-600">{{ third_party.identificacion }}</div>
+                                <div class="text-xs text-slate-500 mt-1">{{ third_party.tipo_tercero }}{% if third_party.ciudad %} · {{ third_party.ciudad }}{% endif %}</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-slate-500">No hay terceros registrados.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
