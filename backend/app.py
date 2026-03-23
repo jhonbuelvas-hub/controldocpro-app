@@ -1,12 +1,13 @@
-from flask import Flask
+from flask import Flask, render_template, request, redirect, url_for, flash
 import os
 import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "controldocpro-dev-key")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Compatibilidad por si la URL viene en formato postgres://
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -17,9 +18,30 @@ def get_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
+def create_users_table_if_needed():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            nombre VARCHAR(100) NOT NULL,
+            email VARCHAR(150) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            rol VARCHAR(50) NOT NULL,
+            estado BOOLEAN DEFAULT TRUE,
+            ultimo_login TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 @app.route("/")
 def home():
-    return "ControlDocPro conectado 🚀"
+    return redirect(url_for("list_users"))
 
 
 @app.route("/health")
@@ -44,31 +66,272 @@ def test_db():
 @app.route("/create-users-table")
 def create_users_table():
     try:
+        create_users_table_if_needed()
+        return "Tabla users creada correctamente 🚀"
+    except Exception as e:
+        return f"Error al crear la tabla users: {str(e)}"
+
+
+@app.route("/users")
+def list_users():
+    try:
+        create_users_table_if_needed()
+
+        search = request.args.get("search", "").strip()
+        rol = request.args.get("rol", "").strip()
+        estado = request.args.get("estado", "").strip()
+
         conn = get_connection()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = """
+            SELECT id, nombre, email, rol, estado, created_at, updated_at
+            FROM users
+            WHERE 1=1
+        """
+        params = []
+
+        if search:
+            query += " AND (LOWER(nombre) LIKE %s OR LOWER(email) LIKE %s)"
+            like_value = f"%{search.lower()}%"
+            params.extend([like_value, like_value])
+
+        if rol:
+            query += " AND rol = %s"
+            params.append(rol)
+
+        if estado == "activo":
+            query += " AND estado = TRUE"
+        elif estado == "inactivo":
+            query += " AND estado = FALSE"
+
+        query += " ORDER BY id DESC"
+
+        cur.execute(query, params)
+        users = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        return render_template(
+            "users.html",
+            users=users,
+            search=search,
+            rol=rol,
+            estado=estado
+        )
+    except Exception as e:
+        return f"Error al listar usuarios: {str(e)}"
+
+
+def validate_user_form(nombre, email, password, rol, is_edit=False):
+    errors = []
+
+    roles_validos = ["ADMIN", "JURIDICO", "SUPERVISOR", "FINANCIERO", "CONSULTA"]
+
+    if not nombre or len(nombre.strip()) < 3:
+        errors.append("El nombre es obligatorio y debe tener al menos 3 caracteres.")
+
+    if not email or "@" not in email or "." not in email:
+        errors.append("Debe ingresar un correo electrónico válido.")
+
+    if not is_edit and (not password or len(password) < 6):
+        errors.append("La contraseña es obligatoria y debe tener al menos 6 caracteres.")
+
+    if rol not in roles_validos:
+        errors.append("Debe seleccionar un rol válido.")
+
+    return errors
+
+
+@app.route("/users/new", methods=["GET", "POST"])
+def new_user():
+    try:
+        create_users_table_if_needed()
+
+        if request.method == "POST":
+            nombre = request.form.get("nombre", "").strip()
+            email = request.form.get("email", "").strip().lower()
+            password = request.form.get("password", "").strip()
+            rol = request.form.get("rol", "").strip()
+
+            errors = validate_user_form(nombre, email, password, rol, is_edit=False)
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+                user = {
+                    "nombre": nombre,
+                    "email": email,
+                    "rol": rol,
+                    "estado": True
+                }
+                return render_template("user_form.html", title="Nuevo Usuario", user=user, is_edit=False)
+
+            conn = get_connection()
+            cur = conn.cursor()
+
+            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+            existing_user = cur.fetchone()
+
+            if existing_user:
+                cur.close()
+                conn.close()
+                flash("Ya existe un usuario con ese correo electrónico.", "error")
+                user = {
+                    "nombre": nombre,
+                    "email": email,
+                    "rol": rol,
+                    "estado": True
+                }
+                return render_template("user_form.html", title="Nuevo Usuario", user=user, is_edit=False)
+
+            cur.execute("""
+                INSERT INTO users (nombre, email, password, rol, estado)
+                VALUES (%s, %s, %s, %s, TRUE)
+            """, (nombre, email, password, rol))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            flash("Usuario creado correctamente.", "success")
+            return redirect(url_for("list_users"))
+
+        return render_template("user_form.html", title="Nuevo Usuario", user=None, is_edit=False)
+
+    except Exception as e:
+        return f"Error al crear usuario: {str(e)}"
+
+
+@app.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
+def edit_user(user_id):
+    try:
+        create_users_table_if_needed()
+
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
 
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            nombre VARCHAR(100) NOT NULL,
-            email VARCHAR(150) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            rol VARCHAR(50) NOT NULL,
-            estado BOOLEAN DEFAULT TRUE,
-            ultimo_login TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """)
+            SELECT id, nombre, email, rol, estado
+            FROM users
+            WHERE id = %s
+        """, (user_id,))
+        user = cur.fetchone()
+
+        if not user:
+            cur.close()
+            conn.close()
+            return "Usuario no encontrado."
+
+        if request.method == "POST":
+            nombre = request.form.get("nombre", "").strip()
+            email = request.form.get("email", "").strip().lower()
+            password = request.form.get("password", "").strip()
+            rol = request.form.get("rol", "").strip()
+            estado_form = request.form.get("estado", "activo")
+            estado_bool = True if estado_form == "activo" else False
+
+            errors = validate_user_form(nombre, email, password, rol, is_edit=True)
+
+            if errors:
+                for error in errors:
+                    flash(error, "error")
+                user["nombre"] = nombre
+                user["email"] = email
+                user["rol"] = rol
+                user["estado"] = estado_bool
+                cur.close()
+                conn.close()
+                return render_template("user_form.html", title="Editar Usuario", user=user, is_edit=True)
+
+            cur.execute("SELECT id FROM users WHERE email = %s AND id <> %s", (email, user_id))
+            existing_user = cur.fetchone()
+
+            if existing_user:
+                flash("Ya existe otro usuario con ese correo electrónico.", "error")
+                user["nombre"] = nombre
+                user["email"] = email
+                user["rol"] = rol
+                user["estado"] = estado_bool
+                cur.close()
+                conn.close()
+                return render_template("user_form.html", title="Editar Usuario", user=user, is_edit=True)
+
+            if password:
+                cur.execute("""
+                    UPDATE users
+                    SET nombre = %s,
+                        email = %s,
+                        password = %s,
+                        rol = %s,
+                        estado = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (nombre, email, password, rol, estado_bool, user_id))
+            else:
+                cur.execute("""
+                    UPDATE users
+                    SET nombre = %s,
+                        email = %s,
+                        rol = %s,
+                        estado = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (nombre, email, rol, estado_bool, user_id))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            flash("Usuario actualizado correctamente.", "success")
+            return redirect(url_for("list_users"))
+
+        cur.close()
+        conn.close()
+        return render_template("user_form.html", title="Editar Usuario", user=user, is_edit=True)
+
+    except Exception as e:
+        return f"Error al editar usuario: {str(e)}"
+
+
+@app.route("/users/<int:user_id>/toggle-status", methods=["POST"])
+def toggle_user_status(user_id):
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id, estado FROM users WHERE id = %s", (user_id,))
+        user = cur.fetchone()
+
+        if not user:
+            cur.close()
+            conn.close()
+            flash("Usuario no encontrado.", "error")
+            return redirect(url_for("list_users"))
+
+        new_status = not user["estado"]
+
+        cur.execute("""
+            UPDATE users
+            SET estado = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (new_status, user_id))
 
         conn.commit()
         cur.close()
         conn.close()
 
-        return "Tabla users creada correctamente 🚀"
+        if new_status:
+            flash("Usuario activado correctamente.", "success")
+        else:
+            flash("Usuario desactivado correctamente.", "success")
+
+        return redirect(url_for("list_users"))
 
     except Exception as e:
-        return f"Error al crear la tabla users: {str(e)}"
+        return f"Error al cambiar estado del usuario: {str(e)}"
 
 
 if __name__ == "__main__":
