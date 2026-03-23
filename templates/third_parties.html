@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-slate-900">Gestión de terceros</h2>
+            <p class="text-slate-600 mt-1">Administre contratistas, entidades, supervisores, proveedores y otros actores.</p>
+        </div>
+        <div>
+            <a href="/third-parties/new" class="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl font-semibold shadow">
+                + Nuevo tercero
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-5">
+        <form method="GET" action="/third-parties" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium mb-2">Buscar</label>
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ search }}"
+                    placeholder="Nombre o identificación"
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Tipo</label>
+                <select
+                    name="tipo"
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                    <option value="">Todos</option>
+                    <option value="CONTRATISTA" {% if tipo == "CONTRATISTA" %}selected{% endif %}>CONTRATISTA</option>
+                    <option value="CONTRATANTE" {% if tipo == "CONTRATANTE" %}selected{% endif %}>CONTRATANTE</option>
+                    <option value="SUPERVISOR" {% if tipo == "SUPERVISOR" %}selected{% endif %}>SUPERVISOR</option>
+                    <option value="INTERVENTOR" {% if tipo == "INTERVENTOR" %}selected{% endif %}>INTERVENTOR</option>
+                    <option value="PROVEEDOR" {% if tipo == "PROVEEDOR" %}selected{% endif %}>PROVEEDOR</option>
+                    <option value="ASEGURADORA" {% if tipo == "ASEGURADORA" %}selected{% endif %}>ASEGURADORA</option>
+                    <option value="OTRO" {% if tipo == "OTRO" %}selected{% endif %}>OTRO</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Estado</label>
+                <select
+                    name="estado"
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                    <option value="">Todos</option>
+                    <option value="activo" {% if estado == "activo" %}selected{% endif %}>Activo</option>
+                    <option value="inactivo" {% if estado == "inactivo" %}selected{% endif %}>Inactivo</option>
+                </select>
+            </div>
+
+            <div class="flex items-end gap-3">
+                <button class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl font-semibold w-full">
+                    Filtrar
+                </button>
+                <a href="/third-parties" class="bg-slate-200 hover:bg-slate-300 text-slate-800 px-5 py-3 rounded-xl font-semibold whitespace-nowrap">
+                    Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead class="bg-slate-100">
+                    <tr>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">ID</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Tipo</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Nombre</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Identificación</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Correo</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Ciudad</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Estado</th>
+                        <th class="text-center px-6 py-4 text-sm font-semibold text-slate-700">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                    {% if third_parties %}
+                        {% for item in third_parties %}
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-6 py-4 text-sm">{{ item.id }}</td>
+                                <td class="px-6 py-4 text-sm">
+                                    <span class="inline-block bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-xs font-semibold">
+                                        {{ item.tipo_tercero }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 font-medium">{{ item.nombre }}</td>
+                                <td class="px-6 py-4 text-sm">{{ item.identificacion }}</td>
+                                <td class="px-6 py-4 text-sm">{{ item.email or '' }}</td>
+                                <td class="px-6 py-4 text-sm">{{ item.ciudad or '' }}</td>
+                                <td class="px-6 py-4 text-sm">
+                                    {% if item.estado %}
+                                        <span class="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-semibold">
+                                            Activo
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-block bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-semibold">
+                                            Inactivo
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center justify-center gap-3">
+                                        <a href="/third-parties/{{ item.id }}/edit" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                            Editar
+                                        </a>
+
+                                        <form method="POST" action="/third-parties/{{ item.id }}/toggle-status" onsubmit="return confirm('¿Está seguro de cambiar el estado de este tercero?');">
+                                            {% if item.estado %}
+                                                <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                                    Desactivar
+                                                </button>
+                                            {% else %}
+                                                <button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                                    Activar
+                                                </button>
+                                            {% endif %}
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="px-6 py-10 text-center text-slate-500">
+                                No hay terceros registrados con esos filtros.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
