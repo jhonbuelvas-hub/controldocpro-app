@@ -722,7 +722,7 @@ def new_communication():
         cur.execute("SELECT id, nombre FROM departments WHERE activo = TRUE ORDER BY nombre")
         departments = cur.fetchall()
 
-        cur.execute("SELECT id, full_name FROM users WHERE active = TRUE ORDER BY full_name")
+        cur.execute("SELECT id, nombre FROM users WHERE active = TRUE ORDER BY full_name")
         users = cur.fetchall()
 
         cur.execute("SELECT id, numero_contrato FROM contracts WHERE activo = TRUE ORDER BY numero_contrato")
@@ -975,7 +975,7 @@ def edit_communication(communication_id):
         cur.execute("SELECT id, nombre FROM departments WHERE activo = TRUE ORDER BY nombre")
         departments = cur.fetchall()
 
-        cur.execute("SELECT id, full_name FROM users WHERE active = TRUE ORDER BY full_name")
+        cur.execute("SELECT id, nombre FROM users WHERE active = TRUE ORDER BY full_name")
         users = cur.fetchall()
 
         cur.execute("SELECT id, numero_contrato FROM contracts WHERE activo = TRUE ORDER BY numero_contrato")
