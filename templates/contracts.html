@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-slate-900">Gestión de contratos</h2>
+            <p class="text-slate-600 mt-1">Administre el núcleo contractual del sistema.</p>
+        </div>
+        <div>
+            <a href="/contracts/new" class="inline-flex items-center bg-amber-600 hover:bg-amber-700 text-white px-5 py-3 rounded-xl font-semibold shadow">
+                + Nuevo contrato
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-5">
+        <form method="GET" action="/contracts" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium mb-2">Buscar</label>
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ search }}"
+                    placeholder="Número, objeto o contratista"
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Tipo</label>
+                <select name="tipo" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <option value="">Todos</option>
+                    <option value="PRESTACION_SERVICIOS" {% if tipo == "PRESTACION_SERVICIOS" %}selected{% endif %}>PRESTACIÓN SERVICIOS</option>
+                    <option value="SUMINISTRO" {% if tipo == "SUMINISTRO" %}selected{% endif %}>SUMINISTRO</option>
+                    <option value="CONSULTORIA" {% if tipo == "CONSULTORIA" %}selected{% endif %}>CONSULTORÍA</option>
+                    <option value="OBRA" {% if tipo == "OBRA" %}selected{% endif %}>OBRA</option>
+                    <option value="INTERADMINISTRATIVO" {% if tipo == "INTERADMINISTRATIVO" %}selected{% endif %}>INTERADMINISTRATIVO</option>
+                    <option value="COMPRAVENTA" {% if tipo == "COMPRAVENTA" %}selected{% endif %}>COMPRAVENTA</option>
+                    <option value="OTRO" {% if tipo == "OTRO" %}selected{% endif %}>OTRO</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Estado</label>
+                <select name="estado" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <option value="">Todos</option>
+                    <option value="activo" {% if estado == "activo" %}selected{% endif %}>Activo</option>
+                    <option value="inactivo" {% if estado == "inactivo" %}selected{% endif %}>Inactivo</option>
+                </select>
+            </div>
+
+            <div class="flex items-end gap-3">
+                <button class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-3 rounded-xl font-semibold w-full">
+                    Filtrar
+                </button>
+                <a href="/contracts" class="bg-slate-200 hover:bg-slate-300 text-slate-800 px-5 py-3 rounded-xl font-semibold whitespace-nowrap">
+                    Limpiar
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead class="bg-slate-100">
+                    <tr>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Número</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Objeto</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Tipo</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Estado contractual</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Contratista</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Valor total</th>
+                        <th class="text-left px-6 py-4 text-sm font-semibold text-slate-700">Activo</th>
+                        <th class="text-center px-6 py-4 text-sm font-semibold text-slate-700">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200">
+                    {% if contracts %}
+                        {% for item in contracts %}
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-6 py-4 font-medium">{{ item.numero_contrato }}</td>
+                                <td class="px-6 py-4 text-sm">{{ item.objeto[:80] }}{% if item.objeto|length > 80 %}...{% endif %}</td>
+                                <td class="px-6 py-4 text-sm">{{ item.tipo_contrato }}</td>
+                                <td class="px-6 py-4 text-sm">{{ item.estado_contrato }}</td>
+                                <td class="px-6 py-4 text-sm">{{ item.contratista_nombre }}</td>
+                                <td class="px-6 py-4 text-sm">$ {{ item.valor_total }}</td>
+                                <td class="px-6 py-4 text-sm">
+                                    {% if item.activo %}
+                                        <span class="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-semibold">Activo</span>
+                                    {% else %}
+                                        <span class="inline-block bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-semibold">Inactivo</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center justify-center gap-3">
+                                        <a href="/contracts/{{ item.id }}/edit" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                            Editar
+                                        </a>
+                                        <form method="POST" action="/contracts/{{ item.id }}/toggle-status" onsubmit="return confirm('¿Está seguro de cambiar el estado de este contrato?');">
+                                            {% if item.activo %}
+                                                <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                                    Desactivar
+                                                </button>
+                                            {% else %}
+                                                <button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                                    Activar
+                                                </button>
+                                            {% endif %}
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="px-6 py-10 text-center text-slate-500">
+                                No hay contratos registrados con esos filtros.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
