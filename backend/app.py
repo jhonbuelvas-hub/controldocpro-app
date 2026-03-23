@@ -257,6 +257,23 @@ def logout():
 @login_required
 def dashboard():
     try:
+        
+        create_contracts_table_if_needed()
+
+        cur.execute("SELECT COUNT(*) AS total FROM contracts")
+        total_contracts = cur.fetchone()["total"]
+
+        cur.execute("SELECT COUNT(*) AS total FROM contracts WHERE activo = TRUE")
+        active_contracts = cur.fetchone()["total"]
+
+        cur.execute("""
+            SELECT id, numero_contrato, tipo_contrato, estado_contrato, valor_total
+            FROM contracts
+            ORDER BY id DESC
+            LIMIT 5
+        """)
+        recent_contracts = cur.fetchall()
+        
         create_users_table_if_needed()
         create_third_parties_table_if_needed()
 
@@ -302,9 +319,16 @@ def dashboard():
             active_third_parties=active_third_parties,
             recent_users=recent_users,
             recent_third_parties=recent_third_parties
+            total_contracts=total_contracts,
+            active_contracts=active_contracts,
+            recent_contracts=recent_contracts
         )
+    
+    
     except Exception as e:
         return f"Error en dashboard: {str(e)}"
+
+    
 
 
 @app.route("/users")
