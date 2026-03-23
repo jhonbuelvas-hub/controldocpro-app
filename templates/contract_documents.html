@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Documentos Contractuales</h2>
+        <a href="{{ url_for('new_contract_document') }}" class="btn btn-primary">Nuevo Documento</a>
+    </div>
+
+    <form method="GET" action="{{ url_for('list_contract_documents') }}" class="row g-3 mb-4">
+        <div class="col-md-4">
+            <input type="text" name="search" class="form-control" placeholder="Buscar por título, contrato, tipo o contratista" value="{{ search }}">
+        </div>
+
+        <div class="col-md-3">
+            <select name="tipo" class="form-select">
+                <option value="">Todos los tipos</option>
+                <option value="CONTRATO" {% if tipo == 'CONTRATO' %}selected{% endif %}>Contrato</option>
+                <option value="ACTA_INICIO" {% if tipo == 'ACTA_INICIO' %}selected{% endif %}>Acta de inicio</option>
+                <option value="ACTA_SUSPENSION" {% if tipo == 'ACTA_SUSPENSION' %}selected{% endif %}>Acta de suspensión</option>
+                <option value="ACTA_REINICIO" {% if tipo == 'ACTA_REINICIO' %}selected{% endif %}>Acta de reinicio</option>
+                <option value="ACTA_TERMINACION" {% if tipo == 'ACTA_TERMINACION' %}selected{% endif %}>Acta de terminación</option>
+                <option value="ACTA_LIQUIDACION" {% if tipo == 'ACTA_LIQUIDACION' %}selected{% endif %}>Acta de liquidación</option>
+                <option value="OTROSI" {% if tipo == 'OTROSI' %}selected{% endif %}>Otrosí</option>
+                <option value="POLIZA" {% if tipo == 'POLIZA' %}selected{% endif %}>Póliza</option>
+                <option value="INFORME" {% if tipo == 'INFORME' %}selected{% endif %}>Informe</option>
+                <option value="OTRO" {% if tipo == 'OTRO' %}selected{% endif %}>Otro</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <select name="contract_id" class="form-select">
+                <option value="">Todos los contratos</option>
+                {% for contract in contracts %}
+                    <option value="{{ contract.id }}" {% if contract_id|string == contract.id|string %}selected{% endif %}>
+                        {{ contract.numero_contrato }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-2 d-grid">
+            <button type="submit" class="btn btn-secondary">Filtrar</button>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Contrato</th>
+                    <th>Contratista</th>
+                    <th>Tipo</th>
+                    <th>Título</th>
+                    <th>Archivo</th>
+                    <th>Versión</th>
+                    <th>Estado</th>
+                    <th>Fecha</th>
+                    <th style="width: 220px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.id }}</td>
+                    <td>{{ doc.numero_contrato }}</td>
+                    <td>{{ doc.contratista_nombre }}</td>
+                    <td>{{ doc.tipo_documento }}</td>
+                    <td>{{ doc.titulo }}</td>
+                    <td>{{ doc.nombre_archivo_original }}</td>
+                    <td>{{ doc.version }}</td>
+                    <td>{{ doc.estado }}</td>
+                    <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '' }}</td>
+                    <td>
+                        <a href="{{ url_for('download_contract_document', document_id=doc.id) }}" class="btn btn-sm btn-success">Descargar</a>
+                        <a href="{{ url_for('edit_contract_document', document_id=doc.id) }}" class="btn btn-sm btn-warning">Editar</a>
+                        <form action="{{ url_for('delete_contract_document', document_id=doc.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Desea eliminar este documento?');">
+                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" class="text-center">No hay documentos contractuales registrados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
