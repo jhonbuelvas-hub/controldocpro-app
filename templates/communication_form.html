@@ -142,7 +142,7 @@
                     {% for user in users %}
                         <option value="{{ user.id }}"
                             {% if communication and communication.response_owner_id|string == user.id|string %}selected{% endif %}>
-                            {{ user.full_name }}
+                            {{ user.nombre }}
                         </option>
                     {% endfor %}
                 </select>
