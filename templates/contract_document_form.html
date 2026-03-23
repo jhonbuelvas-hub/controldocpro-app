@@ -1,14 +1,54 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container mt-4">
-    <h2>{{ title }}</h2>
+<div class="space-y-6">
 
-    <form method="POST" enctype="multipart/form-data" class="mt-4">
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label">Contrato</label>
-                <select name="contract_id" class="form-select" required>
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-slate-900">{{ title }}</h2>
+            <p class="text-slate-600 mt-1">
+                {% if is_edit %}
+                    Actualice la información del documento contractual seleccionado.
+                {% else %}
+                    Registre un nuevo documento contractual asociado a un contrato.
+                {% endif %}
+            </p>
+        </div>
+        <div>
+            <a href="/contract-documents" class="inline-flex items-center bg-slate-200 hover:bg-slate-300 text-slate-800 px-5 py-3 rounded-xl font-semibold">
+                ← Volver al listado
+            </a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="space-y-3">
+                {% for category, message in messages %}
+                    {% if category == "success" %}
+                        <div class="bg-green-100 border border-green-200 text-green-800 px-4 py-3 rounded-xl">
+                            {{ message }}
+                        </div>
+                    {% elif category == "error" or category == "danger" %}
+                        <div class="bg-red-100 border border-red-200 text-red-800 px-4 py-3 rounded-xl">
+                            {{ message }}
+                        </div>
+                    {% else %}
+                        <div class="bg-amber-100 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl">
+                            {{ message }}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="bg-white rounded-2xl shadow p-6">
+        <form method="POST" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <div>
+                <label class="block text-sm font-medium mb-2">Contrato</label>
+                <select name="contract_id" required class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
                     <option value="">Seleccione un contrato</option>
                     {% for contract in contracts %}
                         <option value="{{ contract.id }}"
@@ -19,62 +59,93 @@
                 </select>
             </div>
 
-            <div class="col-md-6">
-                <label class="form-label">Tipo de documento</label>
-                <select name="tipo_documento" class="form-select" required>
+            <div>
+                <label class="block text-sm font-medium mb-2">Tipo de documento</label>
+                <select name="tipo_documento" required class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
                     <option value="">Seleccione</option>
-                    <option value="CONTRATO" {% if document and document.tipo_documento == 'CONTRATO' %}selected{% endif %}>Contrato</option>
-                    <option value="ACTA_INICIO" {% if document and document.tipo_documento == 'ACTA_INICIO' %}selected{% endif %}>Acta de inicio</option>
-                    <option value="ACTA_SUSPENSION" {% if document and document.tipo_documento == 'ACTA_SUSPENSION' %}selected{% endif %}>Acta de suspensión</option>
-                    <option value="ACTA_REINICIO" {% if document and document.tipo_documento == 'ACTA_REINICIO' %}selected{% endif %}>Acta de reinicio</option>
-                    <option value="ACTA_TERMINACION" {% if document and document.tipo_documento == 'ACTA_TERMINACION' %}selected{% endif %}>Acta de terminación</option>
-                    <option value="ACTA_LIQUIDACION" {% if document and document.tipo_documento == 'ACTA_LIQUIDACION' %}selected{% endif %}>Acta de liquidación</option>
-                    <option value="OTROSI" {% if document and document.tipo_documento == 'OTROSI' %}selected{% endif %}>Otrosí</option>
-                    <option value="POLIZA" {% if document and document.tipo_documento == 'POLIZA' %}selected{% endif %}>Póliza</option>
-                    <option value="INFORME" {% if document and document.tipo_documento == 'INFORME' %}selected{% endif %}>Informe</option>
-                    <option value="OTRO" {% if document and document.tipo_documento == 'OTRO' %}selected{% endif %}>Otro</option>
+                    <option value="CONTRATO" {% if document and document.tipo_documento == "CONTRATO" %}selected{% endif %}>CONTRATO</option>
+                    <option value="ACTA_INICIO" {% if document and document.tipo_documento == "ACTA_INICIO" %}selected{% endif %}>ACTA INICIO</option>
+                    <option value="ACTA_SUSPENSION" {% if document and document.tipo_documento == "ACTA_SUSPENSION" %}selected{% endif %}>ACTA SUSPENSIÓN</option>
+                    <option value="ACTA_REINICIO" {% if document and document.tipo_documento == "ACTA_REINICIO" %}selected{% endif %}>ACTA REINICIO</option>
+                    <option value="ACTA_TERMINACION" {% if document and document.tipo_documento == "ACTA_TERMINACION" %}selected{% endif %}>ACTA TERMINACIÓN</option>
+                    <option value="ACTA_LIQUIDACION" {% if document and document.tipo_documento == "ACTA_LIQUIDACION" %}selected{% endif %}>ACTA LIQUIDACIÓN</option>
+                    <option value="OTROSI" {% if document and document.tipo_documento == "OTROSI" %}selected{% endif %}>OTROSÍ</option>
+                    <option value="POLIZA" {% if document and document.tipo_documento == "POLIZA" %}selected{% endif %}>PÓLIZA</option>
+                    <option value="INFORME" {% if document and document.tipo_documento == "INFORME" %}selected{% endif %}>INFORME</option>
+                    <option value="OTRO" {% if document and document.tipo_documento == "OTRO" %}selected{% endif %}>OTRO</option>
                 </select>
             </div>
 
-            <div class="col-md-8">
-                <label class="form-label">Título</label>
-                <input type="text" name="titulo" class="form-control" required
-                       value="{{ document.titulo if document else '' }}">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium mb-2">Título</label>
+                <input
+                    type="text"
+                    name="titulo"
+                    required
+                    value="{{ document.titulo if document else '' }}"
+                    placeholder="Ejemplo: Acta de inicio contrato 001-2026"
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
             </div>
 
-            <div class="col-md-4">
-                <label class="form-label">Versión</label>
-                <input type="text" name="version" class="form-control"
-                       value="{{ document.version if document else '1.0' }}">
+            <div>
+                <label class="block text-sm font-medium mb-2">Versión</label>
+                <input
+                    type="text"
+                    name="version"
+                    value="{{ document.version if document else '1.0' }}"
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
             </div>
 
-            <div class="col-md-6">
-                <label class="form-label">Estado</label>
-                <select name="estado" class="form-select">
-                    <option value="ACTIVO" {% if document and document.estado == 'ACTIVO' %}selected{% elif not document %}selected{% endif %}>ACTIVO</option>
-                    <option value="INACTIVO" {% if document and document.estado == 'INACTIVO' %}selected{% endif %}>INACTIVO</option>
-                    <option value="ANULADO" {% if document and document.estado == 'ANULADO' %}selected{% endif %}>ANULADO</option>
+            <div>
+                <label class="block text-sm font-medium mb-2">Estado</label>
+                <select name="estado" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <option value="ACTIVO" {% if document and document.estado == "ACTIVO" %}selected{% elif not document %}selected{% endif %}>ACTIVO</option>
+                    <option value="INACTIVO" {% if document and document.estado == "INACTIVO" %}selected{% endif %}>INACTIVO</option>
+                    <option value="ANULADO" {% if document and document.estado == "ANULADO" %}selected{% endif %}>ANULADO</option>
                 </select>
             </div>
 
-            <div class="col-md-6">
-                <label class="form-label">Archivo</label>
-                <input type="file" name="archivo" class="form-control" {% if not is_edit %}required{% endif %}>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium mb-2">Archivo</label>
+                <input
+                    type="file"
+                    name="archivo"
+                    {% if not is_edit %}required{% endif %}
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
                 {% if is_edit and document.nombre_archivo_original %}
-                    <small class="text-muted">Archivo actual: {{ document.nombre_archivo_original }}</small>
+                    <p class="text-sm text-slate-500 mt-2">
+                        Archivo actual: <span class="font-medium text-slate-700">{{ document.nombre_archivo_original }}</span>
+                    </p>
                 {% endif %}
+                <p class="text-xs text-slate-400 mt-2">
+                    Formatos permitidos: PDF, DOC, DOCX, XLS, XLSX, PNG, JPG, JPEG.
+                </p>
             </div>
 
-            <div class="col-md-12">
-                <label class="form-label">Descripción</label>
-                <textarea name="descripcion" class="form-control" rows="4">{{ document.descripcion if document else '' }}</textarea>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium mb-2">Descripción</label>
+                <textarea
+                    name="descripcion"
+                    rows="5"
+                    placeholder="Ingrese una descripción breve del documento"
+                    class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >{{ document.descripcion if document else '' }}</textarea>
             </div>
-        </div>
 
-        <div class="mt-4 d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Guardar</button>
-            <a href="{{ url_for('list_contract_documents') }}" class="btn btn-secondary">Cancelar</a>
-        </div>
-    </form>
+            <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 pt-2">
+                <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-xl font-semibold shadow">
+                    {% if is_edit %}Actualizar documento{% else %}Guardar documento{% endif %}
+                </button>
+                <a href="/contract-documents" class="bg-slate-200 hover:bg-slate-300 text-slate-800 px-6 py-3 rounded-xl font-semibold text-center">
+                    Cancelar
+                </a>
+            </div>
+
+        </form>
+    </div>
+
 </div>
 {% endblock %}
