@@ -8,7 +8,7 @@
         <p class="text-slate-600 mt-1">Resumen inicial de la operación del sistema.</p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-6">
         <div class="bg-white rounded-2xl shadow p-6">
             <p class="text-sm text-slate-500">Total usuarios</p>
             <h3 class="text-4xl font-bold mt-2">{{ total_users }}</h3>
@@ -25,24 +25,30 @@
             <p class="text-sm text-slate-500">Terceros activos</p>
             <h3 class="text-4xl font-bold mt-2 text-indigo-600">{{ active_third_parties }}</h3>
         </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+            <p class="text-sm text-slate-500">Total contratos</p>
+            <h3 class="text-4xl font-bold mt-2">{{ total_contracts }}</h3>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+            <p class="text-sm text-slate-500">Contratos activos</p>
+            <h3 class="text-4xl font-bold mt-2 text-amber-600">{{ active_contracts }}</h3>
+        </div>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div class="bg-white rounded-2xl shadow overflow-hidden">
             <div class="px-6 py-4 border-b border-slate-200">
                 <h3 class="text-xl font-bold">Últimos usuarios</h3>
             </div>
-            <div class="p-6">
+            <div class="p-6 space-y-4">
                 {% if recent_users %}
-                    <div class="space-y-4">
-                        {% for user in recent_users %}
-                            <div class="border border-slate-200 rounded-xl p-4">
-                                <div class="font-semibold">{{ user.nombre }}</div>
-                                <div class="text-sm text-slate-600">{{ user.email }}</div>
-                                <div class="text-xs text-slate-500 mt-1">{{ user.rol }}</div>
-                            </div>
-                        {% endfor %}
-                    </div>
+                    {% for user in recent_users %}
+                        <div class="border border-slate-200 rounded-xl p-4">
+                            <div class="font-semibold">{{ user.nombre }}</div>
+                            <div class="text-sm text-slate-600">{{ user.email }}</div>
+                            <div class="text-xs text-slate-500 mt-1">{{ user.rol }}</div>
+                        </div>
+                    {% endfor %}
                 {% else %}
                     <p class="text-slate-500">No hay usuarios registrados.</p>
                 {% endif %}
@@ -53,19 +59,36 @@
             <div class="px-6 py-4 border-b border-slate-200">
                 <h3 class="text-xl font-bold">Últimos terceros</h3>
             </div>
-            <div class="p-6">
+            <div class="p-6 space-y-4">
                 {% if recent_third_parties %}
-                    <div class="space-y-4">
-                        {% for third_party in recent_third_parties %}
-                            <div class="border border-slate-200 rounded-xl p-4">
-                                <div class="font-semibold">{{ third_party.nombre }}</div>
-                                <div class="text-sm text-slate-600">{{ third_party.identificacion }}</div>
-                                <div class="text-xs text-slate-500 mt-1">{{ third_party.tipo_tercero }}{% if third_party.ciudad %} · {{ third_party.ciudad }}{% endif %}</div>
-                            </div>
-                        {% endfor %}
-                    </div>
+                    {% for third_party in recent_third_parties %}
+                        <div class="border border-slate-200 rounded-xl p-4">
+                            <div class="font-semibold">{{ third_party.nombre }}</div>
+                            <div class="text-sm text-slate-600">{{ third_party.identificacion }}</div>
+                            <div class="text-xs text-slate-500 mt-1">{{ third_party.tipo_tercero }}{% if third_party.ciudad %} · {{ third_party.ciudad }}{% endif %}</div>
+                        </div>
+                    {% endfor %}
                 {% else %}
                     <p class="text-slate-500">No hay terceros registrados.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200">
+                <h3 class="text-xl font-bold">Últimos contratos</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                {% if recent_contracts %}
+                    {% for contract in recent_contracts %}
+                        <div class="border border-slate-200 rounded-xl p-4">
+                            <div class="font-semibold">{{ contract.numero_contrato }}</div>
+                            <div class="text-sm text-slate-600">{{ contract.tipo_contrato }}</div>
+                            <div class="text-xs text-slate-500 mt-1">{{ contract.estado_contrato }} · $ {{ contract.valor_total }}</div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-slate-500">No hay contratos registrados.</p>
                 {% endif %}
             </div>
         </div>
