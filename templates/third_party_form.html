@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-2xl shadow p-8">
+        <div class="mb-8">
+            <h2 class="text-3xl font-bold text-slate-900">{{ title }}</h2>
+            <p class="text-slate-600 mt-2">
+                Registre la información general del tercero.
+            </p>
+        </div>
+
+        <form method="POST" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Tipo de tercero</label>
+                    <select
+                        name="tipo_tercero"
+                        required
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="">Seleccione una opción</option>
+                        <option value="CONTRATISTA" {% if third_party and third_party.tipo_tercero == "CONTRATISTA" %}selected{% endif %}>CONTRATISTA</option>
+                        <option value="CONTRATANTE" {% if third_party and third_party.tipo_tercero == "CONTRATANTE" %}selected{% endif %}>CONTRATANTE</option>
+                        <option value="SUPERVISOR" {% if third_party and third_party.tipo_tercero == "SUPERVISOR" %}selected{% endif %}>SUPERVISOR</option>
+                        <option value="INTERVENTOR" {% if third_party and third_party.tipo_tercero == "INTERVENTOR" %}selected{% endif %}>INTERVENTOR</option>
+                        <option value="PROVEEDOR" {% if third_party and third_party.tipo_tercero == "PROVEEDOR" %}selected{% endif %}>PROVEEDOR</option>
+                        <option value="ASEGURADORA" {% if third_party and third_party.tipo_tercero == "ASEGURADORA" %}selected{% endif %}>ASEGURADORA</option>
+                        <option value="OTRO" {% if third_party and third_party.tipo_tercero == "OTRO" %}selected{% endif %}>OTRO</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Identificación / NIT</label>
+                    <input
+                        type="text"
+                        name="identificacion"
+                        required
+                        value="{{ third_party.identificacion if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Ejemplo: 900123456"
+                    >
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-semibold mb-2">Nombre / Razón social</label>
+                    <input
+                        type="text"
+                        name="nombre"
+                        required
+                        value="{{ third_party.nombre if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Nombre del tercero"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Correo electrónico</label>
+                    <input
+                        type="email"
+                        name="email"
+                        value="{{ third_party.email if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="correo@empresa.com"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Teléfono</label>
+                    <input
+                        type="text"
+                        name="telefono"
+                        value="{{ third_party.telefono if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Número de contacto"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Ciudad</label>
+                    <input
+                        type="text"
+                        name="ciudad"
+                        value="{{ third_party.ciudad if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Ciudad"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Dirección</label>
+                    <input
+                        type="text"
+                        name="direccion"
+                        value="{{ third_party.direccion if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Dirección"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Representante legal</label>
+                    <input
+                        type="text"
+                        name="representante_legal"
+                        value="{{ third_party.representante_legal if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Nombre del representante"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Cargo del contacto</label>
+                    <input
+                        type="text"
+                        name="cargo_contacto"
+                        value="{{ third_party.cargo_contacto if third_party else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Cargo"
+                    >
+                </div>
+
+                {% if is_edit %}
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Estado</label>
+                    <select
+                        name="estado"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="activo" {% if third_party.estado %}selected{% endif %}>Activo</option>
+                        <option value="inactivo" {% if not third_party.estado %}selected{% endif %}>Inactivo</option>
+                    </select>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center gap-3 pt-4">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-semibold shadow">
+                    Guardar tercero
+                </button>
+                <a href="/third-parties" class="bg-slate-200 hover:bg-slate-300 text-slate-800 px-6 py-3 rounded-xl font-semibold">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
