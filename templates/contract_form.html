@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="bg-white rounded-2xl shadow p-8">
+        <div class="mb-8">
+            <h2 class="text-3xl font-bold text-slate-900">{{ title }}</h2>
+            <p class="text-slate-600 mt-2">Registre la información principal del contrato.</p>
+        </div>
+
+        <form method="POST" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Número de contrato</label>
+                    <input type="text" name="numero_contrato" required value="{{ contract.numero_contrato if contract else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Tipo de contrato</label>
+                    <select name="tipo_contrato" required class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="">Seleccione una opción</option>
+                        <option value="PRESTACION_SERVICIOS" {% if contract and contract.tipo_contrato == "PRESTACION_SERVICIOS" %}selected{% endif %}>PRESTACIÓN SERVICIOS</option>
+                        <option value="SUMINISTRO" {% if contract and contract.tipo_contrato == "SUMINISTRO" %}selected{% endif %}>SUMINISTRO</option>
+                        <option value="CONSULTORIA" {% if contract and contract.tipo_contrato == "CONSULTORIA" %}selected{% endif %}>CONSULTORÍA</option>
+                        <option value="OBRA" {% if contract and contract.tipo_contrato == "OBRA" %}selected{% endif %}>OBRA</option>
+                        <option value="INTERADMINISTRATIVO" {% if contract and contract.tipo_contrato == "INTERADMINISTRATIVO" %}selected{% endif %}>INTERADMINISTRATIVO</option>
+                        <option value="COMPRAVENTA" {% if contract and contract.tipo_contrato == "COMPRAVENTA" %}selected{% endif %}>COMPRAVENTA</option>
+                        <option value="OTRO" {% if contract and contract.tipo_contrato == "OTRO" %}selected{% endif %}>OTRO</option>
+                    </select>
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-semibold mb-2">Objeto contractual</label>
+                    <textarea name="objeto" required rows="4"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">{{ contract.objeto if contract else '' }}</textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Estado contractual</label>
+                    <select name="estado_contrato" required class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="">Seleccione una opción</option>
+                        <option value="BORRADOR" {% if contract and contract.estado_contrato == "BORRADOR" %}selected{% endif %}>BORRADOR</option>
+                        <option value="EN_REVISION" {% if contract and contract.estado_contrato == "EN_REVISION" %}selected{% endif %}>EN REVISIÓN</option>
+                        <option value="APROBADO" {% if contract and contract.estado_contrato == "APROBADO" %}selected{% endif %}>APROBADO</option>
+                        <option value="FIRMADO" {% if contract and contract.estado_contrato == "FIRMADO" %}selected{% endif %}>FIRMADO</option>
+                        <option value="EN_EJECUCION" {% if contract and contract.estado_contrato == "EN_EJECUCION" %}selected{% endif %}>EN EJECUCIÓN</option>
+                        <option value="SUSPENDIDO" {% if contract and contract.estado_contrato == "SUSPENDIDO" %}selected{% endif %}>SUSPENDIDO</option>
+                        <option value="LIQUIDADO" {% if contract and contract.estado_contrato == "LIQUIDADO" %}selected{% endif %}>LIQUIDADO</option>
+                        <option value="CERRADO" {% if contract and contract.estado_contrato == "CERRADO" %}selected{% endif %}>CERRADO</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Contratista</label>
+                    <select name="contratista_id" required class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="">Seleccione un tercero</option>
+                        {% for tp in third_parties %}
+                            <option value="{{ tp.id }}" {% if contract and contract.contratista_id == tp.id %}selected{% endif %}>
+                                {{ tp.nombre }} - {{ tp.tipo_tercero }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Supervisor</label>
+                    <select name="supervisor_id" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="">Seleccione un tercero</option>
+                        {% for tp in third_parties %}
+                            <option value="{{ tp.id }}" {% if contract and contract.supervisor_id == tp.id %}selected{% endif %}>
+                                {{ tp.nombre }} - {{ tp.tipo_tercero }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Valor inicial</label>
+                    <input type="number" step="0.01" min="0" name="valor_inicial" value="{{ contract.valor_inicial if contract else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Valor total</label>
+                    <input type="number" step="0.01" min="0" name="valor_total" value="{{ contract.valor_total if contract else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Fecha de suscripción</label>
+                    <input type="date" name="fecha_suscripcion"
+                        value="{{ contract.fecha_suscripcion.strftime('%Y-%m-%d') if contract and contract.fecha_suscripcion else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Fecha de inicio</label>
+                    <input type="date" name="fecha_inicio"
+                        value="{{ contract.fecha_inicio.strftime('%Y-%m-%d') if contract and contract.fecha_inicio else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Fecha de fin</label>
+                    <input type="date" name="fecha_fin"
+                        value="{{ contract.fecha_fin.strftime('%Y-%m-%d') if contract and contract.fecha_fin else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                {% if is_edit %}
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Estado del registro</label>
+                    <select name="activo" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="activo" {% if contract.activo %}selected{% endif %}>Activo</option>
+                        <option value="inactivo" {% if not contract.activo %}selected{% endif %}>Inactivo</option>
+                    </select>
+                </div>
+                {% endif %}
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-semibold mb-2">Observaciones</label>
+                    <textarea name="observaciones" rows="4"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">{{ contract.observaciones if contract else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 pt-4">
+                <button class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-xl font-semibold shadow">
+                    Guardar contrato
+                </button>
+                <a href="/contracts" class="bg-slate-200 hover:bg-slate-300 text-slate-800 px-6 py-3 rounded-xl font-semibold">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
