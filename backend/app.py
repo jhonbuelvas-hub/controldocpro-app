@@ -1,7 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
@@ -13,12 +15,22 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    
+
 
 def get_connection():
     if not DATABASE_URL:
         raise Exception("La variable de entorno DATABASE_URL no está configurada.")
     return psycopg2.connect(DATABASE_URL)
+
+
+def login_required(view_func):
+    @wraps(view_func)
+    def wrapped_view(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Debe iniciar sesión para continuar.", "error")
+            return redirect(url_for("login"))
+        return view_func(*args, **kwargs)
+    return wrapped_view
 
 
 def create_users_table_if_needed():
@@ -44,7 +56,9 @@ def create_users_table_if_needed():
 
 @app.route("/")
 def home():
-    return redirect(url_for("list_users"))
+    if "user_id" in session:
+        return redirect(url_for("list_users"))
+    return redirect(url_for("login"))
 
 
 @app.route("/health")
@@ -75,7 +89,110 @@ def create_users_table():
         return f"Error al crear la tabla users: {str(e)}"
 
 
+@app.route("/migrate-passwords")
+def migrate_passwords():
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id, password FROM users")
+        users = cur.fetchall()
+
+        updated = 0
+        for user in users:
+            current_password = user["password"]
+            if not current_password.startswith("scrypt:") and not current_password.startswith("pbkdf2:"):
+                hashed_password = generate_password_hash(current_password)
+                cur.execute(
+                    "UPDATE users SET password = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                    (hashed_password, user["id"])
+                )
+                updated += 1
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return f"Migración completada. Contraseñas actualizadas: {updated}"
+    except Exception as e:
+        return f"Error en migración de contraseñas: {str(e)}"
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    try:
+        create_users_table_if_needed()
+
+        if request.method == "POST":
+            email = request.form.get("email", "").strip().lower()
+            password = request.form.get("password", "").strip()
+
+            if not email or not password:
+                flash("Debe ingresar correo y contraseña.", "error")
+                return render_template("login.html")
+
+            conn = get_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+
+            cur.execute("""
+                SELECT id, nombre, email, password, rol, estado
+                FROM users
+                WHERE email = %s
+            """, (email,))
+            user = cur.fetchone()
+
+            if not user:
+                cur.close()
+                conn.close()
+                flash("Usuario o contraseña inválidos.", "error")
+                return render_template("login.html")
+
+            if not user["estado"]:
+                cur.close()
+                conn.close()
+                flash("El usuario está inactivo. Contacte al administrador.", "error")
+                return render_template("login.html")
+
+            if not check_password_hash(user["password"], password):
+                cur.close()
+                conn.close()
+                flash("Usuario o contraseña inválidos.", "error")
+                return render_template("login.html")
+
+            cur.execute("""
+                UPDATE users
+                SET ultimo_login = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (user["id"],))
+            conn.commit()
+
+            session["user_id"] = user["id"]
+            session["user_nombre"] = user["nombre"]
+            session["user_email"] = user["email"]
+            session["user_rol"] = user["rol"]
+
+            cur.close()
+            conn.close()
+
+            flash(f"Bienvenido, {user['nombre']}.", "success")
+            return redirect(url_for("list_users"))
+
+        return render_template("login.html")
+
+    except Exception as e:
+        return f"Error en login: {str(e)}"
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("Sesión cerrada correctamente.", "success")
+    return redirect(url_for("login"))
+
+
 @app.route("/users")
+@login_required
 def list_users():
     try:
         create_users_table_if_needed()
@@ -88,7 +205,7 @@ def list_users():
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
         query = """
-            SELECT id, nombre, email, rol, estado, created_at, updated_at
+            SELECT id, nombre, email, rol, estado, created_at, updated_at, ultimo_login
             FROM users
             WHERE 1=1
         """
@@ -129,7 +246,6 @@ def list_users():
 
 def validate_user_form(nombre, email, password, rol, is_edit=False):
     errors = []
-
     roles_validos = ["ADMIN", "JURIDICO", "SUPERVISOR", "FINANCIERO", "CONSULTA"]
 
     if not nombre or len(nombre.strip()) < 3:
@@ -141,6 +257,9 @@ def validate_user_form(nombre, email, password, rol, is_edit=False):
     if not is_edit and (not password or len(password) < 6):
         errors.append("La contraseña es obligatoria y debe tener al menos 6 caracteres.")
 
+    if password and len(password) < 6:
+        errors.append("La contraseña debe tener al menos 6 caracteres.")
+
     if rol not in roles_validos:
         errors.append("Debe seleccionar un rol válido.")
 
@@ -148,6 +267,7 @@ def validate_user_form(nombre, email, password, rol, is_edit=False):
 
 
 @app.route("/users/new", methods=["GET", "POST"])
+@login_required
 def new_user():
     try:
         create_users_table_if_needed()
@@ -189,10 +309,12 @@ def new_user():
                 }
                 return render_template("user_form.html", title="Nuevo Usuario", user=user, is_edit=False)
 
+            hashed_password = generate_password_hash(password)
+
             cur.execute("""
                 INSERT INTO users (nombre, email, password, rol, estado)
                 VALUES (%s, %s, %s, %s, TRUE)
-            """, (nombre, email, password, rol))
+            """, (nombre, email, hashed_password, rol))
 
             conn.commit()
             cur.close()
@@ -208,6 +330,7 @@ def new_user():
 
 
 @app.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
 def edit_user(user_id):
     try:
         create_users_table_if_needed()
@@ -262,6 +385,7 @@ def edit_user(user_id):
                 return render_template("user_form.html", title="Editar Usuario", user=user, is_edit=True)
 
             if password:
+                hashed_password = generate_password_hash(password)
                 cur.execute("""
                     UPDATE users
                     SET nombre = %s,
@@ -271,7 +395,7 @@ def edit_user(user_id):
                         estado = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (nombre, email, password, rol, estado_bool, user_id))
+                """, (nombre, email, hashed_password, rol, estado_bool, user_id))
             else:
                 cur.execute("""
                     UPDATE users
@@ -299,6 +423,7 @@ def edit_user(user_id):
 
 
 @app.route("/users/<int:user_id>/toggle-status", methods=["POST"])
+@login_required
 def toggle_user_status(user_id):
     try:
         conn = get_connection()
