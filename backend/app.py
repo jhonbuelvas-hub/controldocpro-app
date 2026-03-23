@@ -659,7 +659,7 @@ def list_communications():
                 c.fecha_radicado,
                 c.fecha_limite_respuesta,
                 d.nombre AS department_name,
-                u.full_name AS assigned_to_name
+                u.nombre AS assigned_to_name
             FROM communications c
             LEFT JOIN departments d ON c.department_id = d.id
             LEFT JOIN users u ON c.assigned_to = u.id
@@ -708,7 +708,7 @@ def list_communications():
 
     except Exception as e:
         return f"Error al listar comunicaciones: {str(e)}"
-
+        
 @app.route("/communications/new", methods=["GET", "POST"])
 @login_required
 def new_communication():
