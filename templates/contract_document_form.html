@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>{{ title }}</h2>
+
+    <form method="POST" enctype="multipart/form-data" class="mt-4">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Contrato</label>
+                <select name="contract_id" class="form-select" required>
+                    <option value="">Seleccione un contrato</option>
+                    {% for contract in contracts %}
+                        <option value="{{ contract.id }}"
+                            {% if document and document.contract_id == contract.id %}selected{% endif %}>
+                            {{ contract.numero_contrato }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Tipo de documento</label>
+                <select name="tipo_documento" class="form-select" required>
+                    <option value="">Seleccione</option>
+                    <option value="CONTRATO" {% if document and document.tipo_documento == 'CONTRATO' %}selected{% endif %}>Contrato</option>
+                    <option value="ACTA_INICIO" {% if document and document.tipo_documento == 'ACTA_INICIO' %}selected{% endif %}>Acta de inicio</option>
+                    <option value="ACTA_SUSPENSION" {% if document and document.tipo_documento == 'ACTA_SUSPENSION' %}selected{% endif %}>Acta de suspensión</option>
+                    <option value="ACTA_REINICIO" {% if document and document.tipo_documento == 'ACTA_REINICIO' %}selected{% endif %}>Acta de reinicio</option>
+                    <option value="ACTA_TERMINACION" {% if document and document.tipo_documento == 'ACTA_TERMINACION' %}selected{% endif %}>Acta de terminación</option>
+                    <option value="ACTA_LIQUIDACION" {% if document and document.tipo_documento == 'ACTA_LIQUIDACION' %}selected{% endif %}>Acta de liquidación</option>
+                    <option value="OTROSI" {% if document and document.tipo_documento == 'OTROSI' %}selected{% endif %}>Otrosí</option>
+                    <option value="POLIZA" {% if document and document.tipo_documento == 'POLIZA' %}selected{% endif %}>Póliza</option>
+                    <option value="INFORME" {% if document and document.tipo_documento == 'INFORME' %}selected{% endif %}>Informe</option>
+                    <option value="OTRO" {% if document and document.tipo_documento == 'OTRO' %}selected{% endif %}>Otro</option>
+                </select>
+            </div>
+
+            <div class="col-md-8">
+                <label class="form-label">Título</label>
+                <input type="text" name="titulo" class="form-control" required
+                       value="{{ document.titulo if document else '' }}">
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Versión</label>
+                <input type="text" name="version" class="form-control"
+                       value="{{ document.version if document else '1.0' }}">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Estado</label>
+                <select name="estado" class="form-select">
+                    <option value="ACTIVO" {% if document and document.estado == 'ACTIVO' %}selected{% elif not document %}selected{% endif %}>ACTIVO</option>
+                    <option value="INACTIVO" {% if document and document.estado == 'INACTIVO' %}selected{% endif %}>INACTIVO</option>
+                    <option value="ANULADO" {% if document and document.estado == 'ANULADO' %}selected{% endif %}>ANULADO</option>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Archivo</label>
+                <input type="file" name="archivo" class="form-control" {% if not is_edit %}required{% endif %}>
+                {% if is_edit and document.nombre_archivo_original %}
+                    <small class="text-muted">Archivo actual: {{ document.nombre_archivo_original }}</small>
+                {% endif %}
+            </div>
+
+            <div class="col-md-12">
+                <label class="form-label">Descripción</label>
+                <textarea name="descripcion" class="form-control" rows="4">{{ document.descripcion if document else '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="mt-4 d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="{{ url_for('list_contract_documents') }}" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
