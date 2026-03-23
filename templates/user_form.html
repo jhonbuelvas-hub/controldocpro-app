@@ -1,1 +1,98 @@
+{% extends "base.html" %}
 
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-2xl shadow p-8">
+        <div class="mb-8">
+            <h2 class="text-3xl font-bold text-slate-900">{{ title }}</h2>
+            <p class="text-slate-600 mt-2">
+                Complete la información del usuario con validación básica.
+            </p>
+        </div>
+
+        <form method="POST" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-semibold mb-2">Nombre completo</label>
+                    <input
+                        type="text"
+                        name="nombre"
+                        required
+                        minlength="3"
+                        value="{{ user.nombre if user else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ejemplo: Carolina Moreno"
+                    >
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-semibold mb-2">Correo electrónico</label>
+                    <input
+                        type="email"
+                        name="email"
+                        required
+                        value="{{ user.email if user else '' }}"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="usuario@empresa.com"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">
+                        {% if is_edit %}
+                            Nueva contraseña
+                        {% else %}
+                            Contraseña
+                        {% endif %}
+                    </label>
+                    <input
+                        type="password"
+                        name="password"
+                        {% if not is_edit %}required minlength="6"{% endif %}
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="{% if is_edit %}Dejar vacío para conservar la actual{% else %}Mínimo 6 caracteres{% endif %}"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Rol</label>
+                    <select
+                        name="rol"
+                        required
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">Seleccione un rol</option>
+                        <option value="ADMIN" {% if user and user.rol == "ADMIN" %}selected{% endif %}>ADMIN</option>
+                        <option value="JURIDICO" {% if user and user.rol == "JURIDICO" %}selected{% endif %}>JURIDICO</option>
+                        <option value="SUPERVISOR" {% if user and user.rol == "SUPERVISOR" %}selected{% endif %}>SUPERVISOR</option>
+                        <option value="FINANCIERO" {% if user and user.rol == "FINANCIERO" %}selected{% endif %}>FINANCIERO</option>
+                        <option value="CONSULTA" {% if user and user.rol == "CONSULTA" %}selected{% endif %}>CONSULTA</option>
+                    </select>
+                </div>
+
+                {% if is_edit %}
+                <div>
+                    <label class="block text-sm font-semibold mb-2">Estado</label>
+                    <select
+                        name="estado"
+                        class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="activo" {% if user.estado %}selected{% endif %}>Activo</option>
+                        <option value="inactivo" {% if not user.estado %}selected{% endif %}>Inactivo</option>
+                    </select>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center gap-3 pt-4">
+                <button class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow">
+                    Guardar usuario
+                </button>
+                <a href="/users" class="bg-slate-200 hover:bg-slate-300 text-slate-800 px-6 py-3 rounded-xl font-semibold">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
