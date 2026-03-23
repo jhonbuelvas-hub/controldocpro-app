@@ -129,7 +129,7 @@
                     {% for user in users %}
                         <option value="{{ user.id }}"
                             {% if communication and communication.assigned_to|string == user.id|string %}selected{% endif %}>
-                            {{ user.full_name }}
+                            {{ user.nombre }}
                         </option>
                     {% endfor %}
                 </select>
