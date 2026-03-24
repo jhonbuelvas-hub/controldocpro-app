@@ -123,6 +123,8 @@ def validate_communication_form(tipo_origen, tipo_comunicacion, asunto, requiere
 def create_departments_table_if_needed():
     conn = get_connection()
     cur = conn.cursor()
+
+    # 1️⃣ Crear tabla si no existe
     cur.execute("""
         CREATE TABLE IF NOT EXISTS departments (
             id SERIAL PRIMARY KEY,
@@ -134,9 +136,26 @@ def create_departments_table_if_needed():
         );
     """)
     conn.commit()
+
+    # 2️⃣ Verificar si NO tiene datos
+    cur.execute("SELECT COUNT(*) FROM departments;")
+    count = cur.fetchone()[0]
+
+    # 3️⃣ Insertar departamentos por defecto si está vacía
+    if count == 0:
+        cur.execute("""
+            INSERT INTO departments (nombre, descripcion)
+            VALUES
+                ('Contractual', 'Departamento Contractual'),
+                ('Oficina Técnica', 'Oficina de apoyo técnico'),
+                ('Ambiental', 'Área de gestión ambiental'),
+                ('SST', 'Seguridad y Salud en el Trabajo'),
+                ('Otro', 'Otros departamentos');
+        """)
+        conn.commit()
+
     cur.close()
     conn.close()
-
 
 def create_communications_table_if_needed():
     conn = get_connection()
