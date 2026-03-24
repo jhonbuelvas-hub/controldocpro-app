@@ -4,3 +4,4 @@ psycopg2-binary==2.9.11
 werkzeug
 PyMuPDF
 openai>=1.47.0
+PyPDF2==3.0.1
