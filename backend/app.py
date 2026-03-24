@@ -15,7 +15,7 @@ from backend.ai.communication_ai import (
 
 from backend.ai.contract_ai import analyze_contract
 from backend.ai.risk_ai import analyze_risks
-
+import PyPDF2
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
@@ -442,6 +442,80 @@ def register_communication_tracking(
     conn.commit()
     cur.close()
     conn.close()
+
+def get_main_file_from_communication(comm_id):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT *
+        FROM communication_files
+        WHERE communication_id = %s
+          AND es_principal = TRUE
+        ORDER BY id DESC
+        LIMIT 1
+    """, (comm_id,))
+
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row
+
+def get_documents_by_contract(contract_id):
+    if not contract_id:
+        return []
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT *
+        FROM contract_documents
+        WHERE contract_id = %s
+        ORDER BY id ASC
+    """, (contract_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+def get_related_communications(contract_id):
+    if not contract_id:
+        return []
+
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT id, radicado, asunto
+        FROM communications
+        WHERE contract_id = %s
+        ORDER BY fecha_recepcion ASC
+    """, (contract_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
+
+def extract_text_from_pdf(path):
+    try:
+        if not os.path.exists(path):
+            return ""
+
+        text = ""
+        with open(path, "rb") as f:
+            pdf = PyPDF2.PdfReader(f)
+            for page in pdf.pages:
+                text += page.extract_text() or ""
+
+        return text.strip()
+
+    except Exception:
+        return ""
 
 @app.route("/")
 def home():
@@ -1319,39 +1393,41 @@ def download_communication_main_file(communication_id):
 
 
 @app.route("/communications/<int:comm_id>/ai")
+@login_required
 def analyze_communication_ai(comm_id):
     try:
-        # 1. Obtener comunicación
+        # 1. Comunicación
         comm = get_communication_by_id(comm_id)
         if not comm:
             return "Comunicación no encontrada", 404
 
-        # 2. Obtener archivo principal
-        file = get_main_file_from_communication(comm_id)
-        if not file:
-            return "La comunicación no tiene archivo principal PDF", 400
+        # 2. Archivo principal PDF
+        main_file = get_main_file_from_communication(comm_id)
+        if not main_file:
+            return "La comunicación no tiene archivo principal PDF.", 400
 
-        comm_text = extract_text_from_pdf(file["ruta_archivo"])
+        comm_text = extract_text_from_pdf(main_file["ruta_archivo"])
 
         # 3. Documentos contractuales
         contract_text = ""
         if comm.get("contract_id"):
             docs = get_documents_by_contract(comm["contract_id"])
             contract_text = "\n\n".join([
-                extract_text_from_pdf(d["ruta_archivo"])
-                for d in docs
+                extract_text_from_pdf(d["ruta_archivo"]) for d in docs
             ])
 
-        # 4. Historial de comunicaciones relacionadas
-        history = get_related_communications(comm["contract_id"]) if comm.get("contract_id") else []
-        history_text = "\n".join([
-            f"{h['radicado']} - {h['asunto']}" for h in history
-        ])
+        # 4. Historial
+        history_text = ""
+        if comm.get("contract_id"):
+            history = get_related_communications(comm["contract_id"])
+            history_text = "\n".join([
+                f"{h['radicado']} - {h['asunto']}" for h in history
+            ])
 
-        # 5. Generar análisis con IA
+        # 5. IA
         result = generate_ai_response(comm_text, contract_text, history_text)
 
-        # 6. Mostrar resultado
+        # 6. Render
         return render_template("ai_response.html",
                                result=result,
                                communication=comm)
@@ -1361,7 +1437,6 @@ def analyze_communication_ai(comm_id):
         print("🔥 ERROR EN IA:")
         print(traceback.format_exc())
         return f"Error en Módulo IA: {str(e)}"
-
 
 @app.route("/users")
 @login_required
