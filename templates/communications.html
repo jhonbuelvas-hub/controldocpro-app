@@ -41,6 +41,7 @@
 
     <div class="bg-white rounded-2xl shadow p-5">
         <form method="GET" action="/communications" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
             <div>
                 <label class="block text-sm font-medium mb-2">Buscar</label>
                 <input
@@ -85,6 +86,7 @@
                     Limpiar
                 </a>
             </div>
+
         </form>
     </div>
 
@@ -110,14 +112,18 @@
                     {% if communications %}
                         {% for item in communications %}
                             <tr class="hover:bg-slate-50">
+
                                 <td class="px-6 py-4 font-medium text-slate-900">{{ item.radicado }}</td>
                                 <td class="px-6 py-4 text-sm">{{ item.tipo_origen }}</td>
                                 <td class="px-6 py-4 text-sm">{{ item.tipo_comunicacion }}</td>
+
                                 <td class="px-6 py-4 text-sm">
                                     {{ item.asunto[:60] }}{% if item.asunto|length > 60 %}...{% endif %}
                                 </td>
+
                                 <td class="px-6 py-4 text-sm">{{ item.department_name or 'Sin asignar' }}</td>
                                 <td class="px-6 py-4 text-sm">{{ item.assigned_to_name or 'Sin responsable' }}</td>
+
                                 <td class="px-6 py-4 text-sm">
                                     {% if item.prioridad == "URGENTE" %}
                                         <span class="inline-block bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-semibold">URGENTE</span>
@@ -129,6 +135,7 @@
                                         <span class="inline-block bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-xs font-semibold">BAJA</span>
                                     {% endif %}
                                 </td>
+
                                 <td class="px-6 py-4 text-sm">
                                     {% if item.estado == "RADICADA" %}
                                         <span class="inline-block bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-semibold">RADICADA</span>
@@ -148,24 +155,40 @@
                                         <span class="inline-block bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-xs font-semibold">{{ item.estado }}</span>
                                     {% endif %}
                                 </td>
+
                                 <td class="px-6 py-4 text-sm">
                                     {{ item.fecha_limite_respuesta.strftime('%Y-%m-%d %H:%M') if item.fecha_limite_respuesta else 'N/A' }}
                                 </td>
+
                                 <td class="px-6 py-4">
                                     <div class="flex items-center justify-center gap-2 flex-wrap">
+
+                                        <!-- EDITAR -->
                                         <a href="/communications/{{ item.id }}/edit" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
                                             Editar
                                         </a>
+
+                                        <!-- DESCARGAR ARCHIVO -->
                                         <a href="/communications/{{ item.id }}/download-main" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
                                             Archivo
                                         </a>
+
+                                        <!-- IA RESPONDE -->
+                                        <a href="/communications/{{ item.id }}/ai"
+                                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                           IA Responde
+                                        </a>
+
+                                        <!-- ANULAR -->
                                         <form method="POST" action="/communications/{{ item.id }}/delete" onsubmit="return confirm('¿Está seguro de anular esta comunicación?');">
                                             <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
                                                 Anular
                                             </button>
                                         </form>
+
                                     </div>
                                 </td>
+
                             </tr>
                         {% endfor %}
                     {% else %}
@@ -176,6 +199,7 @@
                         </tr>
                     {% endif %}
                 </tbody>
+
             </table>
         </div>
     </div>
