@@ -33,13 +33,21 @@ Con base en estos insumos, realiza lo siguiente:
 Usa un estilo claro, jurídico y profesional.
 """
 
-def generate_ai_response(comm_text, contract_text, history_text):
+def generate_ai_response(comm_text, contract_text, history_text): 
     """Genera análisis + borrador de respuesta."""
     prompt = build_prompt(comm_text, contract_text, history_text)
 
-    response = client.chat.completions.create(
-        model="gpt-5.1",
-        messages=[{"role": "user", "content": prompt}]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Eres un experto en contratación estatal colombiana."},
+                {"role": "user", "content": prompt}
+            ]
+        )
 
-    return response.choices[0].message["content"]
+        # ✔ ACCESO CORRECTO AL TEXTO DE LA RESPUESTA
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"Error en Módulo IA: {str(e)}"
