@@ -13,8 +13,8 @@ from backend.ai.communication_ai import (
     generate_ai_response
 )
 
-from ai.contract_ai import analyze_contract
-from ai.risk_ai import analyze_risks
+from backend.ai.contract_ai import analyze_contract
+from backend.ai.risk_ai import analyze_risks
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
