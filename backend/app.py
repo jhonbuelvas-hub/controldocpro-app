@@ -739,13 +739,13 @@ def list_communications():
 @login_required
 def new_communication():
     try:
-        # ❌ Ya NO se crean tablas de departamentos
+        # Ya NO se crean tablas de departamentos
         create_communications_table_if_needed()
 
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # ⛔ YA NO SE CONSULTA BD → lista fija
+        # Lista fija — NO BD
         departments = DEPARTMENTS
 
         # Usuarios
@@ -794,24 +794,20 @@ def new_communication():
             third_party_id = request.form.get("third_party_id") or None
             contract_id = request.form.get("contract_id") or None
 
-            # Configuración
             prioridad = request.form.get("prioridad", "MEDIA").strip()
             estado = request.form.get("estado", "RADICADA").strip()
             confidencialidad = request.form.get("confidencialidad", "NORMAL").strip()
             requiere_respuesta = request.form.get("requiere_respuesta", "SI").strip()
 
-            # Fechas
             fecha_recepcion = request.form.get("fecha_recepcion") or None
             fecha_limite_respuesta = request.form.get("fecha_limite_respuesta") or None
 
-            # Envío
             numero_guia = request.form.get("numero_guia", "").strip()
             medio_envio = request.form.get("medio_envio", "").strip()
 
-            # Archivo
             archivo_principal = request.files.get("archivo_principal")
 
-            # ------------------------- Validación -------------------------
+            # Validación
             errors = validate_communication_form(
                 tipo_origen,
                 tipo_comunicacion,
@@ -826,11 +822,10 @@ def new_communication():
                     errors.append("El archivo principal tiene un formato no permitido.")
 
             if errors:
-                for error in errors:
-                    flash(error, "error")
+                for e in errors:
+                    flash(e, "error")
 
                 communication = request.form.to_dict()
-
                 cur.close()
                 conn.close()
 
@@ -845,10 +840,10 @@ def new_communication():
                     is_edit=False
                 )
 
-            # ---------------------- Crear radicado -----------------------
+            # Crear radicado
             radicado = generate_radicado(tipo_origen)
 
-            # ---------------------- Insert BD ---------------------------
+            # Insertar BD
             cur.execute("""
                 INSERT INTO communications (
                     radicado, tipo_origen, tipo_comunicacion, canal, asunto, resumen, observaciones,
@@ -893,7 +888,7 @@ def new_communication():
             communication_id = cur.fetchone()["id"]
             conn.commit()
 
-            # ------------------- Guardar archivo ------------------------
+            # Guardar archivo
             if archivo_principal and archivo_principal.filename:
                 original_name = secure_filename(archivo_principal.filename)
                 ext = original_name.rsplit(".", 1)[1].lower()
@@ -933,7 +928,7 @@ def new_communication():
             flash("Comunicación creada correctamente.", "success")
             return redirect(url_for("list_communications"))
 
-        # ------------------------- GET Form --------------------------
+        # GET
         cur.close()
         conn.close()
 
