@@ -732,25 +732,30 @@ def list_communications():
 @login_required
 def new_communication():
     try:
-        create_departments_table_if_needed()
+        # ❌ Ya NO se crean tablas de departamentos
         create_communications_table_if_needed()
 
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        cur.execute("SELECT id, nombre FROM departments WHERE activo = TRUE ORDER BY nombre")
-        departments = cur.fetchall()
+        # ⛔ YA NO SE CONSULTA BD → lista fija
+        departments = DEPARTMENTS
 
+        # Usuarios
         cur.execute("SELECT id, nombre FROM users WHERE estado = TRUE ORDER BY nombre")
         users = cur.fetchall()
 
+        # Contratos
         cur.execute("SELECT id, numero_contrato FROM contracts WHERE activo = TRUE ORDER BY numero_contrato")
         contracts = cur.fetchall()
 
+        # Terceros
         cur.execute("SELECT id, nombre FROM third_parties WHERE estado = TRUE ORDER BY nombre")
         third_parties = cur.fetchall()
 
+        # ------------------------- POST (Guardar) --------------------------
         if request.method == "POST":
+
             tipo_origen = request.form.get("tipo_origen", "").strip()
             tipo_comunicacion = request.form.get("tipo_comunicacion", "").strip()
             canal = request.form.get("canal", "").strip()
@@ -758,6 +763,7 @@ def new_communication():
             resumen = request.form.get("resumen", "").strip()
             observaciones = request.form.get("observaciones", "").strip()
 
+            # Remitente
             remitente_nombre = request.form.get("remitente_nombre", "").strip()
             remitente_empresa = request.form.get("remitente_empresa", "").strip()
             remitente_identificacion = request.form.get("remitente_identificacion", "").strip()
@@ -766,6 +772,7 @@ def new_communication():
             remitente_direccion = request.form.get("remitente_direccion", "").strip()
             remitente_ciudad = request.form.get("remitente_ciudad", "").strip()
 
+            # Destinatario
             destinatario_nombre = request.form.get("destinatario_nombre", "").strip()
             destinatario_empresa = request.form.get("destinatario_empresa", "").strip()
             destinatario_email = request.form.get("destinatario_email", "").strip()
@@ -773,22 +780,31 @@ def new_communication():
             destinatario_direccion = request.form.get("destinatario_direccion", "").strip()
             destinatario_ciudad = request.form.get("destinatario_ciudad", "").strip()
 
+            # IDs asociadas
             department_id = request.form.get("department_id") or None
             assigned_to = request.form.get("assigned_to") or None
             response_owner_id = request.form.get("response_owner_id") or None
             third_party_id = request.form.get("third_party_id") or None
             contract_id = request.form.get("contract_id") or None
+
+            # Configuración
             prioridad = request.form.get("prioridad", "MEDIA").strip()
             estado = request.form.get("estado", "RADICADA").strip()
             confidencialidad = request.form.get("confidencialidad", "NORMAL").strip()
             requiere_respuesta = request.form.get("requiere_respuesta", "SI").strip()
+
+            # Fechas
             fecha_recepcion = request.form.get("fecha_recepcion") or None
             fecha_limite_respuesta = request.form.get("fecha_limite_respuesta") or None
+
+            # Envío
             numero_guia = request.form.get("numero_guia", "").strip()
             medio_envio = request.form.get("medio_envio", "").strip()
 
+            # Archivo
             archivo_principal = request.files.get("archivo_principal")
 
+            # ------------------------- Validación -------------------------
             errors = validate_communication_form(
                 tipo_origen,
                 tipo_comunicacion,
@@ -822,83 +838,43 @@ def new_communication():
                     is_edit=False
                 )
 
+            # ---------------------- Crear radicado -----------------------
             radicado = generate_radicado(tipo_origen)
 
+            # ---------------------- Insert BD ---------------------------
             cur.execute("""
                 INSERT INTO communications (
-                    radicado,
-                    tipo_origen,
-                    tipo_comunicacion,
-                    canal,
-                    asunto,
-                    resumen,
-                    observaciones,
-                    remitente_nombre,
-                    remitente_empresa,
-                    remitente_identificacion,
-                    remitente_email,
-                    remitente_telefono,
-                    remitente_direccion,
-                    remitente_ciudad,
-                    destinatario_nombre,
-                    destinatario_empresa,
-                    destinatario_email,
-                    destinatario_telefono,
-                    destinatario_direccion,
-                    destinatario_ciudad,
-                    department_id,
-                    created_by,
-                    assigned_to,
-                    response_owner_id,
-                    third_party_id,
-                    contract_id,
-                    prioridad,
-                    estado,
-                    confidencialidad,
-                    requiere_respuesta,
-                    fecha_recepcion,
-                    fecha_asignacion,
-                    fecha_limite_respuesta,
-                    numero_guia,
-                    medio_envio
+                    radicado, tipo_origen, tipo_comunicacion, canal, asunto, resumen, observaciones,
+                    remitente_nombre, remitente_empresa, remitente_identificacion, remitente_email,
+                    remitente_telefono, remitente_direccion, remitente_ciudad,
+                    destinatario_nombre, destinatario_empresa, destinatario_email,
+                    destinatario_telefono, destinatario_direccion, destinatario_ciudad,
+                    department_id, created_by, assigned_to, response_owner_id, third_party_id,
+                    contract_id, prioridad, estado, confidencialidad, requiere_respuesta,
+                    fecha_recepcion, fecha_asignacion, fecha_limite_respuesta,
+                    numero_guia, medio_envio
                 )
                 VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s
+                    %s,%s,%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,
+                    %s,%s,%s,
+                    %s,%s,%s,
+                    %s,%s,%s,
+                    %s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,
+                    %s,%s,%s,
+                    %s,%s
                 )
                 RETURNING id
             """, (
-                radicado,
-                tipo_origen,
-                tipo_comunicacion,
-                canal,
-                asunto,
-                resumen,
-                observaciones,
-                remitente_nombre or None,
-                remitente_empresa or None,
-                remitente_identificacion or None,
-                remitente_email or None,
-                remitente_telefono or None,
-                remitente_direccion or None,
+                radicado, tipo_origen, tipo_comunicacion, canal, asunto, resumen, observaciones,
+                remitente_nombre or None, remitente_empresa or None, remitente_identificacion or None,
+                remitente_email or None, remitente_telefono or None, remitente_direccion or None,
                 remitente_ciudad or None,
-                destinatario_nombre or None,
-                destinatario_empresa or None,
-                destinatario_email or None,
-                destinatario_telefono or None,
-                destinatario_direccion or None,
-                destinatario_ciudad or None,
-                department_id,
-                session.get("user_id"),
-                assigned_to,
-                response_owner_id,
-                third_party_id,
-                contract_id,
-                prioridad,
-                estado,
-                confidencialidad,
+                destinatario_nombre or None, destinatario_empresa or None, destinatario_email or None,
+                destinatario_telefono or None, destinatario_direccion or None, destinatario_ciudad or None,
+                department_id, session.get("user_id"), assigned_to, response_owner_id, third_party_id,
+                contract_id, prioridad, estado, confidencialidad,
                 True if requiere_respuesta == "SI" else False,
                 fecha_recepcion,
                 datetime.now() if assigned_to else None,
@@ -910,38 +886,25 @@ def new_communication():
             communication_id = cur.fetchone()["id"]
             conn.commit()
 
+            # ------------------- Guardar archivo ------------------------
             if archivo_principal and archivo_principal.filename:
                 original_name = secure_filename(archivo_principal.filename)
-                extension = original_name.rsplit(".", 1)[1].lower()
-                unique_name = f"{uuid.uuid4().hex}.{extension}"
-                file_path = os.path.join(COMMUNICATIONS_UPLOAD_DIR, unique_name)
+                ext = original_name.rsplit(".", 1)[1].lower()
+                unique = f"{uuid.uuid4().hex}.{ext}"
+                path = os.path.join(COMMUNICATIONS_UPLOAD_DIR, unique)
 
-                archivo_principal.save(file_path)
-                file_size = os.path.getsize(file_path)
+                archivo_principal.save(path)
+                size = os.path.getsize(path)
 
                 cur.execute("""
                     INSERT INTO communication_files (
-                        communication_id,
-                        tipo_archivo,
-                        nombre_original,
-                        nombre_guardado,
-                        ruta_archivo,
-                        extension_archivo,
-                        tamano_archivo,
-                        es_principal,
-                        uploaded_by
+                        communication_id, tipo_archivo, nombre_original, nombre_guardado,
+                        ruta_archivo, extension_archivo, tamano_archivo, es_principal, uploaded_by
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
-                    communication_id,
-                    "PRINCIPAL",
-                    original_name,
-                    unique_name,
-                    file_path,
-                    extension,
-                    file_size,
-                    True,
-                    session.get("user_id")
+                    communication_id, "PRINCIPAL", original_name, unique, path,
+                    ext, size, True, session.get("user_id")
                 ))
                 conn.commit()
 
@@ -963,6 +926,7 @@ def new_communication():
             flash("Comunicación creada correctamente.", "success")
             return redirect(url_for("list_communications"))
 
+        # ------------------------- GET Form --------------------------
         cur.close()
         conn.close()
 
@@ -979,7 +943,7 @@ def new_communication():
 
     except Exception as e:
         return f"Error al crear comunicación: {str(e)}"
-
+        
 
 @app.route("/communications/<int:communication_id>/edit", methods=["GET", "POST"])
 @login_required
