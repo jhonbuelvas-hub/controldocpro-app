@@ -89,7 +89,7 @@
 
             <div>
                 <label class="block text-sm font-medium mb-2">Departamento</label>
-                <select name="department_id" required class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <select name="department_id" class="w-full rounded-xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500">
                     <option value="">Seleccione un departamento</option>
                     {% for department in departments %}
                         <option value="{{ department.id }}"
