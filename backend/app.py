@@ -449,6 +449,22 @@ def home():
         return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
+def get_communication_by_id(comm_id):
+    conn = get_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute("""
+        SELECT *
+        FROM communications
+        WHERE id = %s
+    """, (comm_id,))
+    
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+    return row
+
 
 @app.route("/health")
 def health():
