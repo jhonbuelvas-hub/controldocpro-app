@@ -1304,36 +1304,47 @@ def download_communication_main_file(communication_id):
 
 @app.route("/communications/<int:comm_id>/ai")
 def analyze_communication_ai(comm_id):
-    # 1. Obtener la comunicación desde la base de datos
-    comm = get_communication_by_id(comm_id)
+    try:
+        # 1. Obtener comunicación
+        comm = get_communication_by_id(comm_id)
+        if not comm:
+            return "Comunicación no encontrada", 404
 
-    if not comm:
-        return "Comunicación no encontrada", 404
+        # 2. Obtener archivo principal
+        file = get_main_file_from_communication(comm_id)
+        if not file:
+            return "La comunicación no tiene archivo principal PDF", 400
 
-    # 2. Extraer texto del archivo PDF principal
-    comm_text = extract_text_from_pdf(comm["file_path"])
+        comm_text = extract_text_from_pdf(file["ruta_archivo"])
 
-    # 3. Documentos contractuales asociados
-    contract_texts = []
-    for doc in get_documents_by_contract(comm["contract_id"]):
-        contract_texts.append(extract_text_from_pdf(doc["file_path"]))
+        # 3. Documentos contractuales
+        contract_text = ""
+        if comm.get("contract_id"):
+            docs = get_documents_by_contract(comm["contract_id"])
+            contract_text = "\n\n".join([
+                extract_text_from_pdf(d["ruta_archivo"])
+                for d in docs
+            ])
 
-    contract_text = "\n\n".join(contract_texts)
+        # 4. Historial de comunicaciones relacionadas
+        history = get_related_communications(comm["contract_id"]) if comm.get("contract_id") else []
+        history_text = "\n".join([
+            f"{h['radicado']} - {h['asunto']}" for h in history
+        ])
 
-    # 4. Historial de otras comunicaciones
-    history = get_related_communications(comm["contract_id"])
-    history_text = "\n".join([
-        f"{h['radicado']} - {h['asunto']}" for h in history
-    ])
+        # 5. Generar análisis con IA
+        result = generate_ai_response(comm_text, contract_text, history_text)
 
-    # 5. Generar análisis con IA
-    result = generate_ai_response(comm_text, contract_text, history_text)
+        # 6. Mostrar resultado
+        return render_template("ai_response.html",
+                               result=result,
+                               communication=comm)
 
-    # 6. Mostrar plantilla HTML con el resultado
-    return render_template("ai_response.html",
-                           result=result,
-                           communication=comm)
-
+    except Exception as e:
+        import traceback
+        print("🔥 ERROR EN IA:")
+        print(traceback.format_exc())
+        return f"Error en Módulo IA: {str(e)}"
 
 
 @app.route("/users")
