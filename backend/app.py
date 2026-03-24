@@ -96,7 +96,7 @@ def generate_radicado(tipo_origen):
     return f"{prefix}-{year}-{str(next_number).zfill(6)}"
 
 
-def validate_communication_form(tipo_origen, tipo_comunicacion, asunto, requiere_respuesta, fecha_limite_respuesta):
+def validate_communication_form(tipo_origen, tipo_comunicacion, asunto, department_id, requiere_respuesta, fecha_limite_respuesta):
     errors = []
 
     tipos_origen_validos = ["ENTRADA", "SALIDA", "INTERNA"]
@@ -114,6 +114,9 @@ def validate_communication_form(tipo_origen, tipo_comunicacion, asunto, requiere
 
     if not asunto or len(asunto.strip()) < 5:
         errors.append("El asunto es obligatorio y debe tener al menos 5 caracteres.")
+
+    if not department_id:
+        errors.append("Debe seleccionar un departamento.")
 
     if requiere_respuesta == "SI" and not fecha_limite_respuesta:
         errors.append("Debe indicar la fecha límite de respuesta cuando la comunicación requiere respuesta.")
