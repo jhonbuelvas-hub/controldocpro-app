@@ -16,6 +16,13 @@ from backend.ai.communication_ai import (
 from backend.ai.contract_ai import analyze_contract
 from backend.ai.risk_ai import analyze_risks
 
+DEPARTMENTS = [
+    {"id": 1, "nombre": "Contractual"},
+    {"id": 2, "nombre": "Oficina Técnica"},
+    {"id": 3, "nombre": "Ambiental"},
+    {"id": 4, "nombre": "SST"},
+    {"id": 5, "nombre": "Otro"},
+]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
