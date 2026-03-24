@@ -578,22 +578,26 @@ def dashboard():
         
         create_users_table_if_needed()
         create_third_parties_table_if_needed()
+        create_contracts_table_if_needed()  # si existe esta función
 
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
+        # Usuarios
         cur.execute("SELECT COUNT(*) AS total FROM users")
         total_users = cur.fetchone()["total"]
 
         cur.execute("SELECT COUNT(*) AS total FROM users WHERE estado = TRUE")
         active_users = cur.fetchone()["total"]
 
+        # Terceros
         cur.execute("SELECT COUNT(*) AS total FROM third_parties")
         total_third_parties = cur.fetchone()["total"]
 
         cur.execute("SELECT COUNT(*) AS total FROM third_parties WHERE estado = TRUE")
         active_third_parties = cur.fetchone()["total"]
 
+        # Usuarios recientes
         cur.execute("""
             SELECT id, nombre, email, rol, created_at
             FROM users
@@ -602,6 +606,7 @@ def dashboard():
         """)
         recent_users = cur.fetchall()
 
+        # Terceros recientes
         cur.execute("""
             SELECT id, tipo_tercero, nombre, identificacion, ciudad, created_at
             FROM third_parties
@@ -609,6 +614,15 @@ def dashboard():
             LIMIT 5
         """)
         recent_third_parties = cur.fetchall()
+
+        # ▶️ CONTRATOS RECIENTES (LO QUE FALTABA)
+        cur.execute("""
+            SELECT id, numero_contrato, tipo_contrato, estado_contrato, valor_total
+            FROM contracts
+            ORDER BY id DESC
+            LIMIT 5
+        """)
+        recent_contracts = cur.fetchall()
 
         cur.close()
         conn.close()
@@ -620,10 +634,9 @@ def dashboard():
             total_third_parties=total_third_parties,
             active_third_parties=active_third_parties,
             recent_users=recent_users,
-            recent_third_parties=recent_third_parties
-            
+            recent_third_parties=recent_third_parties,
+            recent_contracts=recent_contracts  # ▶️ AHORA SÍ
         )
-    
     
     except Exception as e:
         return f"Error en dashboard: {str(e)}"
