@@ -1,7 +1,7 @@
 # ai/communication_ai.py
 
 from openai import OpenAI
-from ai.utils_ai import extract_text_from_pdf, merge_text_blocks, clean_text
+from backend.ai.utils_ai import extract_text_from_pdf, merge_text_blocks, clean_text
 
 client = OpenAI()
 
