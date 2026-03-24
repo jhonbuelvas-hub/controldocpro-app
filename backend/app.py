@@ -8,7 +8,13 @@ import uuid
 from werkzeug.utils import secure_filename
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+from ai.communication_ai import (
+    extract_text_from_pdf,
+    generate_ai_response
+)
 
+from ai.contract_ai import analyze_contract
+from ai.risk_ai import analyze_risks
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
