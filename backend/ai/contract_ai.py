@@ -1,7 +1,7 @@
 # ai/contract_ai.py
 
 from openai import OpenAI
-from ai.utils_ai import clean_text
+from backend.ai.utils_ai import clean_text
 
 client = OpenAI()
 
