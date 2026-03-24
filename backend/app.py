@@ -1269,6 +1269,38 @@ def download_communication_main_file(communication_id):
         return f"Error al descargar archivo principal: {str(e)}"
 
 
+@app.route("/communications/<int:comm_id>/ai")
+def analyze_communication_ai(comm_id):
+    # 1. Obtener la comunicación desde la base de datos
+    comm = get_communication_by_id(comm_id)
+
+    if not comm:
+        return "Comunicación no encontrada", 404
+
+    # 2. Extraer texto del archivo PDF principal
+    comm_text = extract_text_from_pdf(comm["file_path"])
+
+    # 3. Documentos contractuales asociados
+    contract_texts = []
+    for doc in get_documents_by_contract(comm["contract_id"]):
+        contract_texts.append(extract_text_from_pdf(doc["file_path"]))
+
+    contract_text = "\n\n".join(contract_texts)
+
+    # 4. Historial de otras comunicaciones
+    history = get_related_communications(comm["contract_id"])
+    history_text = "\n".join([
+        f"{h['radicado']} - {h['asunto']}" for h in history
+    ])
+
+    # 5. Generar análisis con IA
+    result = generate_ai_response(comm_text, contract_text, history_text)
+
+    # 6. Mostrar plantilla HTML con el resultado
+    return render_template("ai_response.html",
+                           result=result,
+                           communication=comm)
+
 
 
 @app.route("/users")
