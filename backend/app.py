@@ -8,7 +8,7 @@ import uuid
 from werkzeug.utils import secure_filename
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
-from ai.communication_ai import (
+from backend.ai.communication_ai import (
     extract_text_from_pdf,
     generate_ai_response
 )
