@@ -1036,7 +1036,7 @@ def new_communication():
                 archivo_principal.save(tmp_path)
             
                 # Subir a Drive → subcarpeta communications
-                file_id, view_link = upload_file(
+                file_id, view_link = upload_file_to_drive(
                     contract_id=contract_id,
                     filename=original_name,
                     tmp_path=tmp_path,
