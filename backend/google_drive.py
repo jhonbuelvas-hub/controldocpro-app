@@ -4,44 +4,47 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
-# ID de la carpeta raíz "DOCS"
+# Carpeta raíz DOCS en tu Drive
 DRIVE_ROOT_FOLDER = "1mpnJ5RlKuTXJyIIgGvPSLrhTpNkJAJgJ"
 
-# Archivo temporal donde se crea la credencial
+# Archivo temporal donde se guardan las credenciales
 SERVICE_ACCOUNT_FILE = "/tmp/service_account.json"
 
-# Permisos necesarios
+# Permisos para Drive
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 # ============================================================
-#  🔹 Servicio autenticado
+# 🔹 Crear cliente autenticado de Google Drive
 # ============================================================
 def get_drive_service():
-    """Crea una credencial temporal desde la variable de entorno."""
-    service_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    """Crea cliente Drive usando la credencial JSON almacenada en variables de entorno."""
+    try:
+        service_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 
-    if not service_json:
-        raise Exception("ERROR: Falta la variable GOOGLE_SERVICE_ACCOUNT_JSON.")
+        if not service_json:
+            raise Exception("ERROR: GOOGLE_SERVICE_ACCOUNT_JSON no existe en Render.")
 
-    # Crear archivo temporal con la clave
-    with open(SERVICE_ACCOUNT_FILE, "w") as tmp_file:
-        tmp_file.write(service_json)
+        # Crear archivo temporal con el JSON
+        with open(SERVICE_ACCOUNT_FILE, "w") as tmp_file:
+            tmp_file.write(service_json)
 
-    creds = Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
-        scopes=SCOPES
-    )
+        creds = Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE,
+            scopes=SCOPES
+        )
 
-    drive = build("drive", "v3", credentials=creds)
-    return drive
+        return build("drive", "v3", credentials=creds)
+
+    except Exception as e:
+        raise Exception(f"Error creando servicio de Google Drive: {str(e)}")
 
 
 # ============================================================
 # 🔹 Crear carpeta si no existe
 # ============================================================
 def create_folder_if_not_exists(folder_name, parent_folder_id=DRIVE_ROOT_FOLDER):
-    """Crea una carpeta dentro del parent si no existe."""
+    """Crea una carpeta dentro de otra si no existe y devuelve su ID."""
     try:
         drive = get_drive_service()
 
@@ -52,27 +55,20 @@ def create_folder_if_not_exists(folder_name, parent_folder_id=DRIVE_ROOT_FOLDER)
             f"trashed = false"
         )
 
-        results = drive.files().list(
-            q=query,
-            fields="files(id, name)"
-        ).execute()
+        result = drive.files().list(q=query, fields="files(id, name)").execute()
+        files = result.get("files", [])
 
-        items = results.get("files", [])
+        if files:
+            return files[0]["id"]
 
-        if items:
-            return items[0]["id"]  # Ya existe
-
-        # Crear carpeta
-        folder_metadata = {
+        # Crear nueva carpeta
+        metadata = {
             "name": folder_name,
             "parents": [parent_folder_id],
             "mimeType": "application/vnd.google-apps.folder"
         }
 
-        folder = drive.files().create(
-            body=folder_metadata,
-            fields="id"
-        ).execute()
+        folder = drive.files().create(body=metadata, fields="id").execute()
 
         return folder["id"]
 
@@ -81,28 +77,42 @@ def create_folder_if_not_exists(folder_name, parent_folder_id=DRIVE_ROOT_FOLDER)
 
 
 # ============================================================
-# 🔹 Subir archivo a Drive
+# 🔹 Subir archivo a Drive (compatible con app.py)
 # ============================================================
-def upload_file_to_drive(local_path, original_name, subfolder):
+def upload_file_to_drive(contract_id, filename, tmp_path, subfolder="communications"):
     """
-    Sube archivo a Google Drive dentro de DOCS/{subfolder}.
-    Retorna: file_id, link pública
+    Sube archivo a Drive usando estructura:
+
+        DOCS/
+            {contract_id}/
+                {subfolder}/
+                    archivo.pdf
+
+    Retorna:
+        file_id, webViewLink
     """
     try:
         drive = get_drive_service()
 
-        # Crear (o verificar) subcarpeta dentro de DOCS
-        folder_id = create_folder_if_not_exists(subfolder)
+        # 1. Crear carpeta del contrato
+        contract_folder_id = create_folder_if_not_exists(str(contract_id))
 
-        file_metadata = {
-            "name": original_name,
-            "parents": [folder_id]
+        # 2. Crear subcarpeta interna (comunicaciones, documentos, etc.)
+        subfolder_id = create_folder_if_not_exists(
+            subfolder,
+            parent_folder_id=contract_folder_id
+        )
+
+        # 3. Metadata del archivo
+        metadata = {
+            "name": filename,
+            "parents": [subfolder_id]
         }
 
-        media = MediaFileUpload(local_path, resumable=True)
+        media = MediaFileUpload(tmp_path, resumable=True)
 
         uploaded = drive.files().create(
-            body=file_metadata,
+            body=metadata,
             media_body=media,
             fields="id, webViewLink"
         ).execute()
@@ -110,51 +120,14 @@ def upload_file_to_drive(local_path, original_name, subfolder):
         return uploaded["id"], uploaded.get("webViewLink")
 
     except HttpError as e:
-        raise Exception(f"Error en Google Drive API: {e}")
+        raise Exception(f"Error de Google Drive API: {str(e)}")
+
     except Exception as e:
         raise Exception(f"Error subiendo archivo: {str(e)}")
 
 
 # ============================================================
-# 🔹 Wrapper: función con la firma EXACTA que usas en app.py
-# ============================================================
-def upload_file(contract_id, filename, tmp_path, subfolder="communications"):
-    """
-    Wrapper compatible con app.py.
-    Crea carpeta por contrato y subcarpeta interna.
-    
-    Estructura:
-        DOCS/
-            {contract_id}/
-                communications/
-                    archivo.pdf
-    """
-    # Crear carpeta del contrato
-    contract_folder_id = create_folder_if_not_exists(str(contract_id))
-
-    # Crear subcarpeta dentro del contrato
-    subfolder_id = create_folder_if_not_exists(subfolder, parent_folder_id=contract_folder_id)
-
-    drive = get_drive_service()
-
-    file_metadata = {
-        "name": filename,
-        "parents": [subfolder_id]
-    }
-
-    media = MediaFileUpload(tmp_path, resumable=True)
-
-    uploaded = drive.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields="id, webViewLink"
-    ).execute()
-
-    return uploaded["id"], uploaded.get("webViewLink")
-
-
-# ============================================================
-# 🔹 Eliminar archivo de Drive
+# 🔹 Eliminar archivo por ID
 # ============================================================
 def delete_file_from_drive(file_id):
     try:
