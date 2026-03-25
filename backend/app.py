@@ -17,7 +17,7 @@ from backend.ai.contract_ai import analyze_contract
 from backend.ai.risk_ai import analyze_risks
 import PyPDF2
 from backend.google_drive import upload_file_to_drive
-
+from backend.google_drive import upload_file
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
@@ -1022,15 +1022,31 @@ def new_communication():
             communication_id = cur.fetchone()["id"]
             conn.commit()
 
+            # ------------------------------
+            # SUBIR ARCHIVO PRINCIPAL A GOOGLE DRIVE
+            # ------------------------------
+            
+            
             if archivo_principal and archivo_principal.filename:
                 original_name = secure_filename(archivo_principal.filename)
                 extension = original_name.rsplit(".", 1)[1].lower()
-                unique_name = f"{uuid.uuid4().hex}.{extension}"
-                file_path = os.path.join(COMMUNICATIONS_UPLOAD_DIR, unique_name)
-
-                archivo_principal.save(file_path)
-                file_size = os.path.getsize(file_path)
-
+            
+                # Guardar temporalmente en /tmp (único directorio seguro en Render)
+                tmp_path = f"/tmp/{uuid.uuid4().hex}.{extension}"
+                archivo_principal.save(tmp_path)
+            
+                # Subir a Drive → subcarpeta communications
+                file_id, view_link = upload_file(
+                    contract_id=contract_id,
+                    filename=original_name,
+                    tmp_path=tmp_path,
+                    subfolder="communications"
+                )
+            
+                # Obtener tamaño del archivo
+                file_size = os.path.getsize(tmp_path)
+            
+                # Guardar referencia en base de datos
                 cur.execute("""
                     INSERT INTO communication_files (
                         communication_id,
@@ -1048,13 +1064,14 @@ def new_communication():
                     communication_id,
                     "PRINCIPAL",
                     original_name,
-                    unique_name,
-                    file_path,
+                    file_id,          # <<<<<<<<<<<<<<<< AQUÍ GUARDAMOS EL ID REAL DEL ARCHIVO EN DRIVE
+                    view_link,        # <<<<<<<<<<<<< Y AQUÍ EL ENLACE webViewLink
                     extension,
                     file_size,
                     True,
                     session.get("user_id")
                 ))
+            
                 conn.commit()
 
             cur.close()
