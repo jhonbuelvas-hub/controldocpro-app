@@ -16,7 +16,6 @@ from backend.ai.communication_ai import (
 from backend.ai.contract_ai import analyze_contract
 from backend.ai.risk_ai import analyze_risks
 import PyPDF2
-from backend.google_drive import upload_file_to_drive
 from backend.google_drive import upload_file
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
