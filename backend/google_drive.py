@@ -120,7 +120,7 @@ def upload_file_to_drive(contract_id, filename, tmp_path, subfolder="communicati
         return uploaded["id"], uploaded.get("webViewLink")
 
     except HttpError as e:
-        raise Exception(f"Error de Google Drive API: {str(e)}")
+    raise Exception(f"GOOGLE ERROR: {e.status_code} - {e.error_details}")
 
     except Exception as e:
         raise Exception(f"Error subiendo archivo: {str(e)}")
