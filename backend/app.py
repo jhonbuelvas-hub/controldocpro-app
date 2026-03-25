@@ -1037,9 +1037,9 @@ def new_communication():
             
                 # Subir a Drive → subcarpeta communications
                 file_id, view_link = upload_file_to_drive(
-                    contract_id=contract_id,
-                    filename=original_name,
-                    tmp_path=tmp_path,
+                    local_path=tmp_path,
+                    original_name=original_name,
+                    contract_folder=str(contract_id),
                     subfolder="communications"
                 )
             
