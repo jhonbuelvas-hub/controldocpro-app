@@ -2840,12 +2840,36 @@ def delete_contract_document(document_id):
     except Exception as e:
         return f"Error al eliminar documento contractual: {str(e)}"
 
-@app.route("/communications/<int:communication_id>/view-main") # <-- Esta es la ruta
+# ... (otras funciones arriba)
+
+@app.route("/communications/<int:communication_id>/view-main")
 @login_required
-def view_communication_main_file(communication_id): # <-- Este nombre debe coincidir con el url_for
-    # ... (el código que te pasé antes que hace el redirect)
+def view_communication_main_file(communication_id):
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT nombre_original, ruta_archivo 
+            FROM communication_files
+            WHERE communication_id = %s
+              AND es_principal = TRUE
+            ORDER BY id DESC
+            LIMIT 1
+        """, (communication_id,))
+        file_record = cur.fetchone()
+        cur.close()
+        conn.close()
 
+        if not file_record:
+            flash("No existe archivo principal.", "warning")
+            return redirect(url_for("list_communications"))
 
+        return redirect(file_record["ruta_archivo"])
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# ASEGÚRATE DE QUE ESTO NO TENGA ESPACIOS AL INICIO
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False)
+
