@@ -1333,7 +1333,7 @@ from backend.google_drive import get_drive_service
 @app.route("/communications/<int:comm_id>/ai")
 @login_required
 def analyze_communication_ai(comm_id):
-    # Inicializamos variables para evitar residuos
+    # 1. Limpieza absoluta de variables al iniciar
     comm_text = ""
     contract_text = ""
     history_text = ""
@@ -1341,10 +1341,10 @@ def analyze_communication_ai(comm_id):
     try:
         print(f"--- INICIANDO PROCESO IA PARA ID: {comm_id} ---")
         
-        # 1. CONEXIÓN Y BUSQUEDA DE LA COMUNICACIÓN
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
+        # Obtener datos de la comunicación
         cur.execute("SELECT * FROM communications WHERE id = %s", (comm_id,))
         comm = cur.fetchone()
         
@@ -1353,7 +1353,7 @@ def analyze_communication_ai(comm_id):
             conn.close()
             return f"Error: No existe la comunicación con ID {comm_id}", 404
 
-        # 2. BUSCAR EL PDF ASOCIADO
+        # Obtener el archivo principal
         cur.execute("""
             SELECT ruta_archivo, nombre_original 
             FROM communication_files 
@@ -1365,61 +1365,65 @@ def analyze_communication_ai(comm_id):
         if not main_file or not main_file.get("ruta_archivo"):
             cur.close()
             conn.close()
-            return f"La comunicación {comm['radicado']} no tiene un PDF en la base de datos.", 400
+            return f"Error: La comunicación {comm['radicado']} no tiene un archivo PDF asociado.", 400
 
-        # 3. EXTRAER TEXTO DE GOOGLE DRIVE
+        # 2. PROCESO DE DESCARGA Y EXTRACCIÓN
+        from backend.google_drive import get_drive_service
         service = get_drive_service()
+        
         try:
-            # Extracción segura del ID de Drive (soporta varios formatos de URL)
             url = main_file["ruta_archivo"]
+            # Extracción del ID de Drive
             if '/d/' in url:
                 drive_file_id = url.split('/d/')[1].split('/')[0]
             elif 'id=' in url:
                 drive_file_id = url.split('id=')[1].split('&')[0]
             else:
-                drive_file_id = url # Por si ya es el ID puro
-            
+                drive_file_id = url
+
             print(f"DEBUG: Descargando de Drive ID: {drive_file_id}")
             
+            # Descargar contenido binario
             request_drive = service.files().get_media(fileId=drive_file_id)
-            file_stream = io.BytesIO(request_drive.execute())
+            downloaded_content = request_drive.execute()
             
-            # Extraer texto (Asegúrate que tu función soporte el stream)
-            comm_text = extract_text_from_pdf(file_stream)
-            file_stream.close()
-            
+            if not downloaded_content:
+                print("ERROR: Google Drive devolvió un archivo vacío.")
+                comm_text = ""
+            else:
+                # PASO CLAVE: Convertir a BytesIO y extraer
+                file_stream = io.BytesIO(downloaded_content)
+                comm_text = extract_text_from_pdf(file_stream)
+                file_stream.close()
+                
             print(f"DEBUG: Texto extraído con éxito. Longitud: {len(comm_text)} caracteres.")
 
         except Exception as e:
-            print(f"ERROR DRIVE/PDF: {str(e)}")
-            comm_text = "" # Forzamos vacío si falla la lectura
+            print(f"ERROR EN PASO DRIVE/PDF: {str(e)}")
+            comm_text = ""
 
-        # 4. CONTEXTO DEL CONTRATO (Solo si la comunicación tiene contract_id)
+        # 3. CONTEXTO DEL CONTRATO (Opcional)
         if comm.get("contract_id"):
             cur.execute("""
                 SELECT ruta_archivo, nombre_archivo_original 
                 FROM contract_documents 
-                WHERE contract_id = %s 
-                LIMIT 2
+                WHERE contract_id = %s LIMIT 2
             """, (comm["contract_id"],))
             contract_docs = cur.fetchall()
             
             for doc in contract_docs:
                 try:
-                    # Sacar ID del documento contractual
                     c_url = doc["ruta_archivo"]
                     c_id = c_url.split('/d/')[1].split('/')[0]
                     c_req = service.files().get_media(fileId=c_id)
                     c_stream = io.BytesIO(c_req.execute())
-                    
                     text_temp = extract_text_from_pdf(c_stream)
                     if text_temp:
-                        contract_text += f"\n--- DOC CONTRACTUAL ({doc['nombre_archivo_original']}) ---\n{text_temp}\n"
+                        contract_text += f"\n--- DOCUMENTO: {doc['nombre_archivo_original']} ---\n{text_temp}\n"
                     c_stream.close()
-                except:
-                    continue
+                except: continue
 
-        # 5. HISTORIAL RELEVANTE (Limitado a los últimos 3 para no confundir)
+        # 4. HISTORIAL (Opcional)
         if comm.get("contract_id"):
             cur.execute("""
                 SELECT radicado, asunto FROM communications 
@@ -1432,9 +1436,11 @@ def analyze_communication_ai(comm_id):
         cur.close()
         conn.close()
 
-        # 6. ENVIAR A LA IA
-        # IMPORTANTE: Si comm_text está vacío aquí, fallará con el error que viste
+        # 5. LLAMADA A LA IA
         from backend.ai.communication_ai import generate_ai_response
+        
+        # Enviamos los textos. La función generate_ai_response internamente 
+        # debe validar si comm_text tiene contenido.
         result = generate_ai_response(comm_text, contract_text, history_text)
 
         return render_template("ai_response.html", 
@@ -1443,10 +1449,8 @@ def analyze_communication_ai(comm_id):
 
     except Exception as e:
         import traceback
-        print("--- FALLO CRÍTICO EN ANALYZE_AI ---")
         print(traceback.format_exc())
-        return f"Error crítico: {str(e)}"
-
+        return f"Error crítico en Módulo IA: {str(e)}"
 
 @app.route("/users")
 @login_required
