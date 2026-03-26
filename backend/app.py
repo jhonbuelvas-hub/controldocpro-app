@@ -2840,6 +2840,11 @@ def delete_contract_document(document_id):
     except Exception as e:
         return f"Error al eliminar documento contractual: {str(e)}"
 
+@app.route("/communications/<int:communication_id>/view-main") # <-- Esta es la ruta
+@login_required
+def view_communication_main_file(communication_id): # <-- Este nombre debe coincidir con el url_for
+    # ... (el código que te pasé antes que hace el redirect)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
