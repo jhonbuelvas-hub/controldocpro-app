@@ -1333,7 +1333,7 @@ from backend.google_drive import get_drive_service
 @app.route("/communications/<int:comm_id>/ai")
 @login_required
 def analyze_communication_ai(comm_id):
-    # 1. Limpieza absoluta de variables al iniciar
+    # 1. Limpieza de variables
     comm_text = ""
     contract_text = ""
     history_text = ""
@@ -1344,7 +1344,6 @@ def analyze_communication_ai(comm_id):
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Obtener datos de la comunicación
         cur.execute("SELECT * FROM communications WHERE id = %s", (comm_id,))
         comm = cur.fetchone()
         
@@ -1353,10 +1352,8 @@ def analyze_communication_ai(comm_id):
             conn.close()
             return f"Error: No existe la comunicación con ID {comm_id}", 404
 
-        # Obtener el archivo principal
         cur.execute("""
-            SELECT ruta_archivo, nombre_original 
-            FROM communication_files 
+            SELECT ruta_archivo FROM communication_files 
             WHERE communication_id = %s AND es_principal = TRUE 
             ORDER BY id DESC LIMIT 1
         """, (comm_id,))
@@ -1365,63 +1362,47 @@ def analyze_communication_ai(comm_id):
         if not main_file or not main_file.get("ruta_archivo"):
             cur.close()
             conn.close()
-            return f"Error: La comunicación {comm['radicado']} no tiene un archivo PDF asociado.", 400
+            return f"Error: No hay PDF principal para el radicado {comm['radicado']}.", 400
 
-        # 2. PROCESO DE DESCARGA Y EXTRACCIÓN
+        # 2. DESCARGA DESDE DRIVE
         from backend.google_drive import get_drive_service
         service = get_drive_service()
         
         try:
             url = main_file["ruta_archivo"]
-            # Extracción del ID de Drive
-            if '/d/' in url:
-                drive_file_id = url.split('/d/')[1].split('/')[0]
-            elif 'id=' in url:
-                drive_file_id = url.split('id=')[1].split('&')[0]
-            else:
-                drive_file_id = url
-
-            print(f"DEBUG: Descargando de Drive ID: {drive_file_id}")
+            # Extraer ID de la URL de forma segura
+            import re
+            match = re.search(r'/d/([^/]+)', url)
+            drive_file_id = match.group(1) if match else url
             
-            # Descargar contenido binario
+            print(f"DEBUG: Intentando descargar ID de Drive: {drive_file_id}")
+            
+            # Obtener el contenido del archivo
             request_drive = service.files().get_media(fileId=drive_file_id)
-            downloaded_content = request_drive.execute()
+            file_bytes = request_drive.execute()
             
-            if not downloaded_content:
-                print("ERROR: Google Drive devolvió un archivo vacío.")
-                comm_text = ""
+            if file_bytes:
+                print(f"DEBUG: Descarga exitosa ({len(file_bytes)} bytes). Procesando PDF...")
+                # USAMOS TU FUNCION DE UTILS_AI
+                comm_text = extract_text_from_pdf(file_bytes)
+                print(f"DEBUG: Resultado de extracción: {len(comm_text)} caracteres encontrados.")
             else:
-                # PASO CLAVE: Convertir a BytesIO y extraer
-                file_stream = io.BytesIO(downloaded_content)
-                comm_text = extract_text_from_pdf(file_stream)
-                file_stream.close()
-                
-            print(f"DEBUG: Texto extraído con éxito. Longitud: {len(comm_text)} caracteres.")
+                print("ERROR: El archivo descargado de Drive está totalmente vacío.")
 
         except Exception as e:
-            print(f"ERROR EN PASO DRIVE/PDF: {str(e)}")
+            print(f"ERROR EN DESCARGA/EXTRACCIÓN: {str(e)}")
             comm_text = ""
 
-        # 3. CONTEXTO DEL CONTRATO (Opcional)
+        # 3. DOCUMENTOS CONTRACTUALES (Opcional - solo si hay texto)
         if comm.get("contract_id"):
-            cur.execute("""
-                SELECT ruta_archivo, nombre_archivo_original 
-                FROM contract_documents 
-                WHERE contract_id = %s LIMIT 2
-            """, (comm["contract_id"],))
-            contract_docs = cur.fetchall()
-            
-            for doc in contract_docs:
+            cur.execute("SELECT ruta_archivo FROM contract_documents WHERE contract_id = %s LIMIT 1", (comm["contract_id"],))
+            c_doc = cur.fetchone()
+            if c_doc:
                 try:
-                    c_url = doc["ruta_archivo"]
-                    c_id = c_url.split('/d/')[1].split('/')[0]
-                    c_req = service.files().get_media(fileId=c_id)
-                    c_stream = io.BytesIO(c_req.execute())
-                    text_temp = extract_text_from_pdf(c_stream)
-                    if text_temp:
-                        contract_text += f"\n--- DOCUMENTO: {doc['nombre_archivo_original']} ---\n{text_temp}\n"
-                    c_stream.close()
-                except: continue
+                    c_id = re.search(r'/d/([^/]+)', c_doc["ruta_archivo"]).group(1)
+                    c_bytes = service.files().get_media(fileId=c_id).execute()
+                    contract_text = extract_text_from_pdf(c_bytes)
+                except: pass
 
         # 4. HISTORIAL (Opcional)
         if comm.get("contract_id"):
@@ -1439,8 +1420,7 @@ def analyze_communication_ai(comm_id):
         # 5. LLAMADA A LA IA
         from backend.ai.communication_ai import generate_ai_response
         
-        # Enviamos los textos. La función generate_ai_response internamente 
-        # debe validar si comm_text tiene contenido.
+        # Si comm_text sigue vacío aquí, la IA te dará el error que configuramos
         result = generate_ai_response(comm_text, contract_text, history_text)
 
         return render_template("ai_response.html", 
@@ -1450,7 +1430,8 @@ def analyze_communication_ai(comm_id):
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-        return f"Error crítico en Módulo IA: {str(e)}"
+        return f"Error crítico: {str(e)}"
+
 
 @app.route("/users")
 @login_required
