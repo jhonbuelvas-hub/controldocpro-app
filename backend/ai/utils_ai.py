@@ -1,40 +1,49 @@
 # ai/utils_ai.py
+import PyPDF2
+import io
 
-import fitz  # PyMuPDF
-
-def extract_text_from_pdf(path):
-    """Extrae texto plano desde un PDF usando PyMuPDF."""
+def extract_text_from_pdf(file_input):
+    """
+    Extrae texto de un PDF. 
+    Soporta rutas de archivos (strings) y objetos en memoria (BytesIO).
+    """
+    text = ""
     try:
-        doc = fitz.open(path)
-        return "\n".join([page.get_text() for page in doc])
+        # Si recibimos bytes directamente, los convertimos a un objeto de memoria
+        if isinstance(file_input, bytes):
+            file_input = io.BytesIO(file_input)
+            
+        reader = PyPDF2.PdfReader(file_input)
+        
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        
+        # Si después de leer todo, el texto sigue vacío, puede ser un PDF escaneado (imagen)
+        if not text.strip():
+            print("[WARN] El PDF parece no tener texto extraíble (posible imagen).")
+            
+        return text.strip()
+
     except Exception as e:
         print(f"[ERROR] extract_text_from_pdf: {e}")
         return ""
 
-
 def merge_text_blocks(text_list):
-    """Une múltiples bloques de texto en uno solo, separando por dobles saltos."""
-    return "\n\n".join([t for t in text_list if t.strip()])
-
+    """Une múltiples bloques de texto en uno solo."""
+    return "\n\n".join([t for t in text_list if t and t.strip()])
 
 def clean_text(text):
-    """Limpia texto eliminando espacios, saltos repetidos y caracteres raros."""
+    """Limpia el texto para que la IA lo entienda mejor."""
     if not text:
         return ""
     
+    # Eliminar caracteres nulos y limpiar espacios
     text = text.replace("\x00", "").strip()
-    while "\n\n\n" in text:
-        text = text.replace("\n\n\n", "\n\n")
-    return text
-
-def extract_text_from_pdf(file_input):
-    """
-    file_input puede ser una ruta de archivo (string) 
-    o un objeto BytesIO (archivo en memoria)
-    """
-    import PyPDF2
-    reader = PyPDF2.PdfReader(file_input)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() + "\n"
+    
+    # Normalizar saltos de línea (máximo 2 seguidos)
+    import re
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
     return text
