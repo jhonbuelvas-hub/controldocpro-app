@@ -172,13 +172,13 @@
                                         <a href="{{ url_for('view_communication_main_file', communication_id=item.id) }}" 
                                            target="_blank" 
                                            class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
-                                            <i class="fas fa-eye"></i> Ver Archivo
+                                            <i class="fas fa-eye"></i> Ver
                                         </a>
 
                                         <!-- IA RESPONDE -->
-                                        <a href="/communications/{{ item.id }}/ai"
+                                        <a href="{{ url_for('analyze_communication_ai', comm_id=item.id) }}"
                                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
-                                           IA Responde
+                                           <i class="fas fa-robot"></i> IA Responde
                                         </a>
 
                                         <!-- ANULAR -->
