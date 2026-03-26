@@ -2930,18 +2930,19 @@ def delete_contract_document(document_id):
 @app.route("/auth/google")
 def auth_google():
     try:
-        # Importamos localmente para asegurar que las funciones existan
         from google_drive import get_authorization_url
-        
+        # Obtenemos la URL y el estado
         authorization_url, state = get_authorization_url()
         
-        # Guardamos el state en la sesión
+        # Guardamos el estado en la sesión para validarlo al volver
         session['oauth_state'] = state
         
-        # Esta línea es la clave: forzamos a que no se use PKCE si es posible
+        # IMPORTANTE: Esta línea evita que se requiera el verifier en algunos entornos
+        session.modified = True 
+        
         return redirect(authorization_url)
     except Exception as e:
-        return f"Error al generar URL de Google: {str(e)}"
+        return f"Error al generar URL: {str(e)}"
 
 @app.route("/callback")
 def callback():
@@ -2950,12 +2951,11 @@ def callback():
         from google_auth_oauthlib.flow import Flow
         import os
 
-        # Recuperamos el state que guardamos antes
+        # Recuperamos el estado de la sesión
         state = session.get('oauth_state')
-        
         client_config = get_client_config()
         
-        # Creamos el flujo manualmente
+        # Creamos el flujo manualmente para tener control total
         flow = Flow.from_client_config(
             client_config,
             scopes=["https://www.googleapis.com/auth/drive"],
@@ -2963,23 +2963,20 @@ def callback():
         )
         flow.redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
 
-        # Esto intercambia el código de la URL por los tokens finales
-        # Usamos request.url que trae el 'code' de Google
+        # Intercambiamos el código por los tokens
+        # Aquí es donde fallaba por el 'code_verifier'; esta función es más flexible
         flow.fetch_token(authorization_response=request.url)
         
         creds = flow.credentials
 
-        # IMPRIMIR EN LOGS DE RENDER (Busca esto en la pestaña Logs)
-        print("========================================")
-        print(f"TU REFRESH TOKEN ES: {creds.refresh_token}")
-        print("========================================")
+        # Imprimimos en los LOGS de Render para que lo copies
+        print("****************************************")
+        print(f"TU REFRESH TOKEN: {creds.refresh_token}")
+        print("****************************************")
 
-        return f"Autorización exitosa. El Refresh Token ha sido impreso en los Logs de Render."
-        
+        return f"¡Éxito! El Refresh Token se imprimió en los Logs de Render: {creds.refresh_token}"
     except Exception as e:
-        # Si falla, imprimimos el error detallado
         return f"Error en el callback: {str(e)}"
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
