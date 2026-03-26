@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -8,106 +9,36 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
-
 # ==============================
 # CONFIGURACIÓN PRINCIPAL
 # ==============================
+# El ID de tu unidad compartida (Shared Drive)
 SHARED_DRIVE_ID = os.getenv("SHARED_DRIVE_ID", "0ANFiSibcPBDKUk9PVA")
 ROOT_FOLDER_NAME = "DOCS"
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
-
 # ============================================================
-# CONFIG OAUTH DESDE VARIABLES DE ENTORNO
-# ============================================================
-def get_client_config():
-    client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
-    client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-    redirect_uri = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
-
-    if not client_id or not client_secret or not redirect_uri:
-        raise Exception(
-            "Faltan variables GOOGLE_OAUTH_CLIENT_ID, "
-            "GOOGLE_OAUTH_CLIENT_SECRET o GOOGLE_OAUTH_REDIRECT_URI"
-        )
-
-    return {
-        "web": {
-            "client_id": client_id,
-            "project_id": "controldocpro",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_secret": client_secret,
-            "redirect_uris": [redirect_uri]
-        }
-    }
-
-
-# ============================================================
-# CREA FLOW OAUTH
-# ============================================================
-def create_oauth_flow(state=None):
-    client_config = get_client_config()
-    redirect_uri = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
-
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=SCOPES,
-        state=state
-    )
-    flow.redirect_uri = redirect_uri
-    return flow
-
-
-# ============================================================
-# URL DE AUTORIZACIÓN
-# ============================================================
-def get_authorization_url():
-    flow = create_oauth_flow()
-    authorization_url, state = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent"
-    )
-    return authorization_url, state
-
-
-# ============================================================
-# INTERCAMBIA CODE POR TOKENS
-# ============================================================
-def fetch_tokens_from_response(full_request_url, state):
-    flow = create_oauth_flow(state=state)
-    flow.fetch_token(authorization_response=full_request_url)
-    creds = flow.credentials
-
-    return {
-        "token": creds.token,
-        "refresh_token": creds.refresh_token,
-        "token_uri": creds.token_uri,
-        "client_id": creds.client_id,
-        "client_secret": creds.client_secret,
-        "scopes": creds.scopes
-    }
-
-
-# ============================================================
-# CONSTRUYE CREDENCIALES DESDE REFRESH TOKEN
+# CONSTRUYE CREDENCIALES DESDE REFRESH TOKEN (MODIFICADO)
 # ============================================================
 def get_user_credentials():
+    """
+    Crea las credenciales de Google usando el Refresh Token almacenado 
+    en las variables de entorno de Render.
+    """
     refresh_token = os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN")
     client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
     if not refresh_token:
         raise Exception(
-            "No existe GOOGLE_OAUTH_REFRESH_TOKEN. "
-            "Primero debes autorizar la cuenta por OAuth."
+            "ERROR: No se encontró la variable GOOGLE_OAUTH_REFRESH_TOKEN en Render. "
+            "Asegúrate de haberla configurado en el panel de Environment."
         )
 
+    # Creamos el objeto de credenciales directamente en memoria
     creds = Credentials(
-        token=None,
+        token=None,  # El access token se generará en el refresh()
         refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id,
@@ -115,10 +46,13 @@ def get_user_credentials():
         scopes=SCOPES
     )
 
-    # Fuerza renovación del access token
-    creds.refresh(Request())
+    # Refrescamos el token de acceso (expira cada hora, por eso refrescamos)
+    try:
+        creds.refresh(Request())
+    except Exception as e:
+        raise Exception(f"Error al refrescar el token de Google: {str(e)}")
+        
     return creds
-
 
 # ============================================================
 # SERVICIO DRIVE
@@ -127,21 +61,24 @@ def get_drive_service():
     creds = get_user_credentials()
     return build("drive", "v3", credentials=creds)
 
-
 # ============================================================
 # ESCAPAR TEXTO PARA QUERY
 # ============================================================
 def escape_query_value(value):
     return str(value).replace("\\", "\\\\").replace("'", "\\'")
 
-
 # ============================================================
 # OBTENER O CREAR CARPETA
 # ============================================================
 def get_or_create_folder(name, parent_id=None):
+    """
+    Busca una carpeta por nombre. Si no existe, la crea.
+    Ajustado para funcionar con Shared Drives.
+    """
     drive = get_drive_service()
     safe_name = escape_query_value(name)
 
+    # Query para buscar la carpeta
     query = (
         f"name = '{safe_name}' and trashed = false and "
         f"mimeType = 'application/vnd.google-apps.folder'"
@@ -149,6 +86,9 @@ def get_or_create_folder(name, parent_id=None):
 
     if parent_id:
         query += f" and '{parent_id}' in parents"
+    else:
+        # Si no hay padre, buscamos en la raíz del Shared Drive
+        query += f" and '{SHARED_DRIVE_ID}' in parents"
 
     try:
         results = drive.files().list(
@@ -166,15 +106,12 @@ def get_or_create_folder(name, parent_id=None):
         if items:
             return items[0]["id"]
 
+        # Si no existe, la creamos
         metadata = {
             "name": name,
-            "mimeType": "application/vnd.google-apps.folder"
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent_id if parent_id else SHARED_DRIVE_ID]
         }
-
-        if parent_id:
-            metadata["parents"] = [parent_id]
-        else:
-            metadata["parents"] = [SHARED_DRIVE_ID]
 
         folder = drive.files().create(
             body=metadata,
@@ -185,20 +122,22 @@ def get_or_create_folder(name, parent_id=None):
         return folder["id"]
 
     except HttpError as e:
-        status = getattr(e.resp, "status", "N/A")
-        raise Exception(f"ERROR creando/buscando carpeta: {status} - {str(e)}")
-
+        raise Exception(f"ERROR en Google Drive (Carpeta): {str(e)}")
 
 # ============================================================
 # SUBIR ARCHIVO A DRIVE
 # ============================================================
-def upload_file_to_drive(local_path, original_name, contract_folder, subfolder=None):
+def upload_file_to_drive(local_path, original_name, contract_folder="general", subfolder=None):
+    """
+    Sube un archivo local a una estructura de carpetas en Drive.
+    """
     if not os.path.exists(local_path):
-        raise Exception(f"El archivo local no existe: {local_path}")
+        raise Exception(f"El archivo local no existe en la ruta: {local_path}")
 
     drive = get_drive_service()
 
     try:
+        # Estructura: DOCS / [ID_CONTRATO] / [SUBFOLDER]
         root_id = get_or_create_folder(ROOT_FOLDER_NAME)
         contract_id = get_or_create_folder(str(contract_folder), root_id)
 
@@ -207,6 +146,7 @@ def upload_file_to_drive(local_path, original_name, contract_folder, subfolder=N
         else:
             final_folder_id = contract_id
 
+        # Preparar la subida
         media = MediaFileUpload(local_path, resumable=True)
 
         metadata = {
@@ -214,6 +154,7 @@ def upload_file_to_drive(local_path, original_name, contract_folder, subfolder=N
             "parents": [final_folder_id]
         }
 
+        # Ejecutar subida
         uploaded = drive.files().create(
             body=metadata,
             media_body=media,
@@ -224,11 +165,9 @@ def upload_file_to_drive(local_path, original_name, contract_folder, subfolder=N
         return uploaded["id"], uploaded.get("webViewLink")
 
     except HttpError as e:
-        status = getattr(e.resp, "status", "N/A")
-        raise Exception(f"GOOGLE DRIVE ERROR: {status} - {str(e)}")
+        raise Exception(f"GOOGLE DRIVE ERROR (Upload): {str(e)}")
     except Exception as e:
-        raise Exception(f"ERROR SUBIENDO ARCHIVO: {str(e)}")
-
+        raise Exception(f"ERROR GENERAL SUBIENDO: {str(e)}")
 
 # ============================================================
 # ELIMINAR ARCHIVO
