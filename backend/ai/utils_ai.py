@@ -26,3 +26,15 @@ def clean_text(text):
     while "\n\n\n" in text:
         text = text.replace("\n\n\n", "\n\n")
     return text
+
+def extract_text_from_pdf(file_input):
+    """
+    file_input puede ser una ruta de archivo (string) 
+    o un objeto BytesIO (archivo en memoria)
+    """
+    import PyPDF2
+    reader = PyPDF2.PdfReader(file_input)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() + "\n"
+    return text
