@@ -2928,49 +2928,6 @@ def delete_contract_document(document_id):
         return f"Error al eliminar documento contractual: {str(e)}"
 
 
-@app.route("/auth/google")
-def auth_google():
-    try:
-        from backend.google_drive import get_authorization_url
-        authorization_url, state = get_authorization_url()
-        session['oauth_state'] = state
-        session.modified = True 
-        return redirect(authorization_url)
-    except Exception as e:
-        return f"Error al generar URL: {str(e)}"
-
-@app.route("/callback")
-def callback():
-    try:
-        from backend.google_drive import get_client_config
-        from google_auth_oauthlib.flow import Flow
-        import os
-
-        state = session.get('oauth_state')
-        client_config = get_client_config()
-        
-        flow = Flow.from_client_config(
-            client_config,
-            scopes=["https://www.googleapis.com/auth/drive"],
-            state=state
-        )
-        
-        # FORZAMOS LA URL EXACTA QUE TIENES EN RENDER Y CLOUD
-        # Esto elimina el error "redirect_uri_mismatch"
-        flow.redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
-
-        # Intercambiamos el código por el token
-        flow.fetch_token(authorization_response=request.url)
-        creds = flow.credentials
-
-        # Imprimimos en logs para que lo tengas respaldado
-        print(f"REFRESH_TOKEN_DETECTADO: {creds.refresh_token}")
-
-        return f"¡LO LOGRAMOS! Copia este Refresh Token: {creds.refresh_token}"
-    except Exception as e:
-        return f"Error en el callback: {str(e)}"
-
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False)
