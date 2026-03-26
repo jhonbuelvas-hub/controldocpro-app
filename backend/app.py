@@ -2929,22 +2929,32 @@ def delete_contract_document(document_id):
 
 @app.route("/auth/google")
 def auth_google():
-    # Genera la URL de Google para que tú des permiso
-    authorization_url, state = get_authorization_url()
-    session['oauth_state'] = state
-    return redirect(authorization_url)
+    try:
+        authorization_url, state = get_authorization_url()
+        session['oauth_state'] = state
+        return redirect(authorization_url)
+    except Exception as e:
+        return f"Error al generar URL de Google: {str(e)}"
 
 @app.route("/callback")
 def callback():
-    # Google te devuelve a aquí con un código en la URL
-    flow = create_oauth_flow(state=session['oauth_state'])
-    flow.fetch_token(authorization_response=request.url)
-    creds = flow.credentials
-    
-    # ESTO ES LO QUE NECESITAS: Imprime el refresh_token en la consola de Render
-    print(f"TU REFRESH TOKEN ES: {creds.refresh_token}")
-    return "Autorización exitosa. Revisa los logs de Render para copiar el Refresh Token."
-
+    try:
+        # Importante: el estado debe coincidir
+        state = session.get('oauth_state')
+        flow = create_oauth_flow(state=state)
+        
+        # Intercambia el código por tokens
+        flow.fetch_token(authorization_response=request.url)
+        creds = flow.credentials
+        
+        # Muestra el token en los LOGS de Render
+        print("******************************************")
+        print(f"TU REFRESH TOKEN: {creds.refresh_token}")
+        print("******************************************")
+        
+        return "Autorización exitosa. Busca el REFRESH TOKEN en los Logs de Render."
+    except Exception as e:
+        return f"Error en el callback: {str(e)}"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
