@@ -2927,19 +2927,14 @@ def delete_contract_document(document_id):
     except Exception as e:
         return f"Error al eliminar documento contractual: {str(e)}"
 
+
 @app.route("/auth/google")
 def auth_google():
     try:
-        from backend.google_drive import get_authorization_url
-        # 1. Obtenemos la URL y el state
+        from google_drive import get_authorization_url
         authorization_url, state = get_authorization_url()
-        
-        # 2. Guardamos el state en la sesión
         session['oauth_state'] = state
-        
-        # 3. Forzamos a Flask a guardar la sesión antes de redirigir
         session.modified = True 
-        
         return redirect(authorization_url)
     except Exception as e:
         return f"Error al generar URL: {str(e)}"
@@ -2947,36 +2942,35 @@ def auth_google():
 @app.route("/callback")
 def callback():
     try:
-        from backend.google_drive import get_client_config
+        from google_drive import get_client_config
         from google_auth_oauthlib.flow import Flow
         import os
 
-        # Recuperamos el state
         state = session.get('oauth_state')
         client_config = get_client_config()
         
-        # CREAMOS EL FLOW MANUALMENTE (Esto evita el error del verifier)
         flow = Flow.from_client_config(
             client_config,
             scopes=["https://www.googleapis.com/auth/drive"],
             state=state
         )
+        
+        # FORZAMOS LA URL EXACTA QUE TIENES EN RENDER Y CLOUD
+        # Esto elimina el error "redirect_uri_mismatch"
         flow.redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
 
-        # Intercambiamos el código de la URL por los tokens
-        # Aquí usamos directamente la URL de respuesta que trae el 'code'
+        # Intercambiamos el código por el token
         flow.fetch_token(authorization_response=request.url)
-        
         creds = flow.credentials
 
-        # Esto imprimirá el token en la pestaña LOGS de Render
-        print("****************************************")
-        print(f"TU REFRESH TOKEN: {creds.refresh_token}")
-        print("****************************************")
+        # Imprimimos en logs para que lo tengas respaldado
+        print(f"REFRESH_TOKEN_DETECTADO: {creds.refresh_token}")
 
-        return f"¡Éxito! Copia el Refresh Token de los logs de Render: {creds.refresh_token}"
+        return f"¡LO LOGRAMOS! Copia este Refresh Token: {creds.refresh_token}"
     except Exception as e:
         return f"Error en el callback: {str(e)}"
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False)
