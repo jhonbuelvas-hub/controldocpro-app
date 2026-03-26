@@ -2930,7 +2930,7 @@ def delete_contract_document(document_id):
 @app.route("/auth/google")
 def auth_google():
     try:
-        from google_drive import get_authorization_url
+        from backend.google_drive import get_authorization_url
         # Obtenemos la URL y el estado
         authorization_url, state = get_authorization_url()
         
@@ -2947,7 +2947,7 @@ def auth_google():
 @app.route("/callback")
 def callback():
     try:
-        from google_drive import get_client_config
+        from backend.google_drive import get_client_config
         from google_auth_oauthlib.flow import Flow
         import os
 
