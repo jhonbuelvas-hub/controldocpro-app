@@ -863,6 +863,7 @@ def new_communication():
         third_parties = cur.fetchall()
 
         if request.method == "POST":
+            # --- Captura de datos del formulario ---
             tipo_origen = request.form.get("tipo_origen", "").strip()
             tipo_comunicacion = request.form.get("tipo_comunicacion", "").strip()
             canal = request.form.get("canal", "").strip()
@@ -901,13 +902,10 @@ def new_communication():
 
             archivo_principal = request.files.get("archivo_principal")
 
+            # --- Validación ---
             errors = validate_communication_form(
-                tipo_origen,
-                tipo_comunicacion,
-                asunto,
-                department_id,
-                requiere_respuesta,
-                fecha_limite_respuesta
+                tipo_origen, tipo_comunicacion, asunto, 
+                department_id, requiere_respuesta, fecha_limite_respuesta
             )
 
             if archivo_principal and archivo_principal.filename:
@@ -917,197 +915,112 @@ def new_communication():
             if errors:
                 for error in errors:
                     flash(error, "error")
-
-                communication = request.form.to_dict()
-
-                cur.close()
-                conn.close()
-
                 return render_template(
-                    "communication_form.html",
-                    title="Nueva comunicación",
-                    communication=communication,
-                    departments=departments,
-                    users=users,
-                    contracts=contracts,
-                    third_parties=third_parties,
-                    is_edit=False
+                    "communication_form.html", title="Nueva comunicación",
+                    communication=request.form.to_dict(), departments=departments,
+                    users=users, contracts=contracts, third_parties=third_parties, is_edit=False
                 )
 
+            # --- Generar Radicado e Insertar Comunicación ---
             radicado = generate_radicado(tipo_origen)
 
             cur.execute("""
                 INSERT INTO communications (
-                    radicado,
-                    tipo_origen,
-                    tipo_comunicacion,
-                    canal,
-                    asunto,
-                    resumen,
-                    observaciones,
-                    remitente_nombre,
-                    remitente_empresa,
-                    remitente_identificacion,
-                    remitente_email,
-                    remitente_telefono,
-                    remitente_direccion,
-                    remitente_ciudad,
-                    destinatario_nombre,
-                    destinatario_empresa,
-                    destinatario_email,
-                    destinatario_telefono,
-                    destinatario_direccion,
-                    destinatario_ciudad,
-                    department_id,
-                    created_by,
-                    assigned_to,
-                    response_owner_id,
-                    third_party_id,
-                    contract_id,
-                    prioridad,
-                    estado,
-                    confidencialidad,
-                    requiere_respuesta,
-                    fecha_recepcion,
-                    fecha_asignacion,
-                    fecha_limite_respuesta,
-                    numero_guia,
-                    medio_envio
+                    radicado, tipo_origen, tipo_comunicacion, canal, asunto, resumen, observaciones,
+                    remitente_nombre, remitente_empresa, remitente_identificacion, remitente_email,
+                    remitente_telefono, remitente_direccion, remitente_ciudad,
+                    destinatario_nombre, destinatario_empresa, destinatario_email, destinatario_telefono,
+                    destinatario_direccion, destinatario_ciudad, department_id, created_by, assigned_to,
+                    response_owner_id, third_party_id, contract_id, prioridad, estado, confidencialidad,
+                    requiere_respuesta, fecha_recepcion, fecha_asignacion, fecha_limite_respuesta,
+                    numero_guia, medio_envio
                 )
                 VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 RETURNING id
             """, (
-                radicado,
-                tipo_origen,
-                tipo_comunicacion,
-                canal,
-                asunto,
-                resumen,
-                observaciones,
-                remitente_nombre or None,
-                remitente_empresa or None,
-                remitente_identificacion or None,
-                remitente_email or None,
-                remitente_telefono or None,
-                remitente_direccion or None,
-                remitente_ciudad or None,
-                destinatario_nombre or None,
-                destinatario_empresa or None,
-                destinatario_email or None,
-                destinatario_telefono or None,
-                destinatario_direccion or None,
-                destinatario_ciudad or None,
-                department_id,
-                session.get("user_id"),
-                assigned_to,
-                response_owner_id,
-                third_party_id,
-                contract_id,
-                prioridad,
-                estado,
-                confidencialidad,
-                True if requiere_respuesta == "SI" else False,
-                fecha_recepcion,
-                datetime.now() if assigned_to else None,
-                fecha_limite_respuesta,
-                numero_guia or None,
-                medio_envio or None
+                radicado, tipo_origen, tipo_comunicacion, canal, asunto, resumen, observaciones,
+                remitente_nombre or None, remitente_empresa or None, remitente_identificacion or None,
+                remitente_email or None, remitente_telefono or None, remitente_direccion or None,
+                remitente_ciudad or None, destinatario_nombre or None, destinatario_empresa or None,
+                destinatario_email or None, destinatario_telefono or None, destinatario_direccion or None,
+                destinatario_ciudad or None, department_id, session.get("user_id"), assigned_to,
+                response_owner_id, third_party_id, contract_id, prioridad, estado, confidencialidad,
+                True if requiere_respuesta == "SI" else False, fecha_recepcion,
+                datetime.now() if assigned_to else None, fecha_limite_respuesta,
+                numero_guia or None, medio_envio or None
             ))
 
             communication_id = cur.fetchone()["id"]
             conn.commit()
 
-            # ------------------------------
-            # SUBIR ARCHIVO PRINCIPAL A GOOGLE DRIVE
-            # ------------------------------
-            
-            
+            # ------------------------------------------------------------
+            # SECCIÓN GOOGLE DRIVE (Actualizada con Refresh Token)
+            # ------------------------------------------------------------
             if archivo_principal and archivo_principal.filename:
                 original_name = secure_filename(archivo_principal.filename)
                 extension = original_name.rsplit(".", 1)[1].lower()
-            
-                # Guardar temporalmente en /tmp (único directorio seguro en Render)
+                
+                # Crear ruta temporal única en Render
                 tmp_path = f"/tmp/{uuid.uuid4().hex}.{extension}"
                 archivo_principal.save(tmp_path)
-            
-                # Subir a Drive → subcarpeta communications
-                file_id, view_link = upload_file_to_drive(
-                    local_path=tmp_path,
-                    original_name=original_name,
-                    contract_folder=str(contract_id),
-                    subfolder="communications"
-                )
-            
-                # Obtener tamaño del archivo
-                file_size = os.path.getsize(tmp_path)
-            
-                # Guardar referencia en base de datos
-                cur.execute("""
-                    INSERT INTO communication_files (
-                        communication_id,
-                        tipo_archivo,
-                        nombre_original,
-                        nombre_guardado,
-                        ruta_archivo,
-                        extension_archivo,
-                        tamano_archivo,
-                        es_principal,
-                        uploaded_by
+                
+                try:
+                    # Subir a Drive (usando tu función de google_drive.py)
+                    # Nota: contract_folder se envía como string para crear la carpeta en Drive
+                    file_id, view_link = upload_file_to_drive(
+                        local_path=tmp_path,
+                        original_name=original_name,
+                        contract_folder=str(contract_id) if contract_id else "general",
+                        subfolder="communications"
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    communication_id,
-                    "PRINCIPAL",
-                    original_name,
-                    file_id,          # <<<<<<<<<<<<<<<< AQUÍ GUARDAMOS EL ID REAL DEL ARCHIVO EN DRIVE
-                    view_link,        # <<<<<<<<<<<<< Y AQUÍ EL ENLACE webViewLink
-                    extension,
-                    file_size,
-                    True,
-                    session.get("user_id")
-                ))
-            
-                conn.commit()
+                    
+                    file_size = os.path.getsize(tmp_path)
 
-            cur.close()
-            conn.close()
+                    # Guardar referencia en comunicación_files
+                    cur.execute("""
+                        INSERT INTO communication_files (
+                            communication_id, tipo_archivo, nombre_original, nombre_guardado,
+                            ruta_archivo, extension_archivo, tamano_archivo, es_principal, uploaded_by
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        communication_id, "PRINCIPAL", original_name,
+                        file_id, view_link, extension, file_size, True, session.get("user_id")
+                    ))
+                    conn.commit()
 
+                finally:
+                    # BORRAR siempre el archivo temporal del disco de Render
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+
+            # --- Registro de Tracking ---
             register_communication_tracking(
-                communication_id=communication_id,
-                accion="CREADA",
-                detalle=f"Comunicación {radicado} creada",
-                usuario_id=session.get("user_id"),
-                department_id=department_id,
-                estado_anterior=None,
-                estado_nuevo=estado,
-                assigned_to_anterior=None,
-                assigned_to_nuevo=assigned_to
+                communication_id=communication_id, accion="CREADA",
+                detalle=f"Comunicación {radicado} creada", usuario_id=session.get("user_id"),
+                department_id=department_id, estado_anterior=None, estado_nuevo=estado,
+                assigned_to_anterior=None, assigned_to_nuevo=assigned_to
             )
 
             flash("Comunicación creada correctamente.", "success")
             return redirect(url_for("list_communications"))
 
-        cur.close()
-        conn.close()
-
         return render_template(
-            "communication_form.html",
-            title="Nueva comunicación",
-            communication=None,
-            departments=departments,
-            users=users,
-            contracts=contracts,
-            third_parties=third_parties,
-            is_edit=False
+            "communication_form.html", title="Nueva comunicación", communication=None,
+            departments=departments, users=users, contracts=contracts, 
+            third_parties=third_parties, is_edit=False
         )
 
     except Exception as e:
+        if 'conn' in locals() and conn:
+            conn.rollback()
         return f"Error al crear comunicación: {str(e)}"
+    finally:
+        if 'cur' in locals() and cur: cur.close()
+        if 'conn' in locals() and conn: conn.close()
 
 
 @app.route("/communications/<int:communication_id>/edit", methods=["GET", "POST"])
