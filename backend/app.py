@@ -17,7 +17,7 @@ from backend.ai.contract_ai import analyze_contract
 from backend.ai.risk_ai import analyze_risks
 import PyPDF2
 from backend.google_drive import upload_file_to_drive, delete_file_from_drive
-
+from backend.google_drive import get_drive_service
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(os.path.dirname(BASE_DIR), "templates")
@@ -1327,72 +1327,108 @@ def download_communication_main_file(communication_id):
 import io
 import requests
 
+import io
+from backend.google_drive import get_drive_service
+
 @app.route("/communications/<int:comm_id>/ai")
 @login_required
 def analyze_communication_ai(comm_id):
     try:
-        # 1. Obtener datos de la comunicación
-        comm = get_communication_by_id(comm_id)
+        # 1. BUSCAR LA COMUNICACIÓN ESPECÍFICA POR ID
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute("SELECT * FROM communications WHERE id = %s", (comm_id,))
+        comm = cur.fetchone()
+        
         if not comm:
-            return "Comunicación no encontrada", 404
+            cur.close()
+            conn.close()
+            return "Error: Comunicación no encontrada en la base de datos.", 404
 
-        # 2. Obtener el archivo principal (el link de Drive)
-        main_file = get_main_file_from_communication(comm_id)
+        # 2. BUSCAR EL ARCHIVO PDF DE ESA COMUNICACIÓN (Y SOLO DE ESA)
+        cur.execute("""
+            SELECT ruta_archivo, nombre_original 
+            FROM communication_files 
+            WHERE communication_id = %s AND es_principal = TRUE 
+            ORDER BY id DESC LIMIT 1
+        """, (comm_id,))
+        main_file = cur.fetchone()
+
         if not main_file or not main_file.get("ruta_archivo"):
-            return "La comunicación no tiene archivo principal en Drive.", 400
+            cur.close()
+            conn.close()
+            return f"La comunicación {comm['radicado']} no tiene un archivo PDF asociado.", 400
 
-        # --- LÓGICA DE LECTURA DESDE DRIVE ---
-        # Extraemos el ID del archivo de la URL de Drive
-        # El link suele ser: https://drive.google.com/file/d/ID_DEL_ARCHIVO/view...
-        file_id = main_file["ruta_archivo"].split('/d/')[1].split('/')[0]
-        
-        # Usamos el servicio de Drive para descargar el contenido binario
-        from backend.google_drive import get_drive_service
-        service = get_drive_service()
-        
-        # Descargamos el PDF a memoria (sin guardar en disco permanentemente)
-        request_drive = service.files().get_media(fileId=file_id)
-        file_content = io.BytesIO(request_drive.execute())
-        
-        # Extraer texto del PDF (Asegúrate que extract_text_from_pdf acepte un stream de bytes)
-        comm_text = extract_text_from_pdf(file_content)
+        # 3. EXTRAER EL TEXTO DEL PDF DESDE GOOGLE DRIVE
+        try:
+            # Extraer el ID de Google Drive desde la URL
+            drive_file_id = main_file["ruta_archivo"].split('/d/')[1].split('/')[0]
+            
+            service = get_drive_service()
+            request_drive = service.files().get_media(fileId=drive_file_id)
+            
+            # Descarga a memoria (BytesIO)
+            file_stream = io.BytesIO(request_drive.execute())
+            
+            # Extraer texto usando la función que ya tienes
+            comm_text = extract_text_from_pdf(file_stream)
+            file_stream.close() # Limpiar memoria inmediatamente
+            
+        except Exception as e:
+            print(f"Error descargando/leyendo PDF de Drive: {e}")
+            comm_text = f"Error al leer el contenido del PDF: {str(e)}"
 
-        # 3. Documentos contractuales (Mismo proceso si están en Drive)
+        # 4. BUSCAR CONTEXTO DEL CONTRATO (Si aplica)
         contract_text = ""
         if comm.get("contract_id"):
-            docs = get_documents_by_contract(comm["contract_id"])
-            # Limitamos a los primeros 3 documentos para no saturar la IA (opcional)
-            for d in docs[:3]:
+            # Solo buscamos documentos de ESTE contrato
+            cur.execute("""
+                SELECT ruta_archivo, nombre_archivo_original 
+                FROM contract_documents 
+                WHERE contract_id = %s 
+                LIMIT 3
+            """, (comm["contract_id"],))
+            contract_docs = cur.fetchall()
+            
+            for doc in contract_docs:
                 try:
-                    c_file_id = d["ruta_archivo"].split('/d/')[1].split('/')[0]
-                    c_request = service.files().get_media(fileId=c_file_id)
-                    c_content = io.BytesIO(c_request.execute())
-                    contract_text += f"\n--- Doc: {d.get('nombre_archivo_original')} ---\n"
-                    contract_text += extract_text_from_pdf(c_content)
+                    c_id = doc["ruta_archivo"].split('/d/')[1].split('/')[0]
+                    c_req = service.files().get_media(fileId=c_id)
+                    c_stream = io.BytesIO(c_req.execute())
+                    contract_text += f"\n--- Documento Contractual: {doc['nombre_archivo_original']} ---\n"
+                    contract_text += extract_text_from_pdf(c_stream)
+                    c_stream.close()
                 except:
                     continue
 
-        # 4. Historial (Texto simple de la DB)
+        # 5. HISTORIAL DE RADICADOS DEL MISMO CONTRATO
         history_text = ""
         if comm.get("contract_id"):
-            history = get_related_communications(comm["contract_id"])
-            history_text = "\n".join([
-                f"Radicado: {h['radicado']} - Asunto: {h['asunto']}" for h in history
-            ])
+            cur.execute("""
+                SELECT radicado, asunto FROM communications 
+                WHERE contract_id = %s AND id != %s 
+                ORDER BY created_at DESC LIMIT 5
+            """, (comm["contract_id"], comm_id))
+            history = cur.fetchall()
+            history_text = "\n".join([f"Radicado: {h['radicado']} - Asunto: {h['asunto']}" for h in history])
 
-        # 5. Llamada a la IA (tu archivo communication_ai.py)
+        cur.close()
+        conn.close()
+
+        # 6. ENVIAR A LA IA (OpenAI)
+        # Aquí llamamos a tu función en backend/ai/communication_ai.py
         result = generate_ai_response(comm_text, contract_text, history_text)
 
-        # 6. Renderizar resultado
-        return render_template("ai_response.html",
-                               result=result,
+        # 7. RENDERIZAR RESPUESTA
+        return render_template("ai_response.html", 
+                               result=result, 
                                communication=comm)
 
     except Exception as e:
         import traceback
-        print("🔥 ERROR EN IA DRIVE:")
         print(traceback.format_exc())
-        return f"Error en Módulo IA: {str(e)}"
+        return f"Error crítico en el proceso de IA: {str(e)}"
 
 
 @app.route("/users")
