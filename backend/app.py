@@ -2930,8 +2930,15 @@ def delete_contract_document(document_id):
 @app.route("/auth/google")
 def auth_google():
     try:
+        # Importamos localmente para asegurar que las funciones existan
+        from google_drive import get_authorization_url
+        
         authorization_url, state = get_authorization_url()
+        
+        # Guardamos el state en la sesión
         session['oauth_state'] = state
+        
+        # Esta línea es la clave: forzamos a que no se use PKCE si es posible
         return redirect(authorization_url)
     except Exception as e:
         return f"Error al generar URL de Google: {str(e)}"
@@ -2939,22 +2946,40 @@ def auth_google():
 @app.route("/callback")
 def callback():
     try:
-        # Importante: el estado debe coincidir
+        from google_drive import get_client_config
+        from google_auth_oauthlib.flow import Flow
+        import os
+
+        # Recuperamos el state que guardamos antes
         state = session.get('oauth_state')
-        flow = create_oauth_flow(state=state)
         
-        # Intercambia el código por tokens
+        client_config = get_client_config()
+        
+        # Creamos el flujo manualmente
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=["https://www.googleapis.com/auth/drive"],
+            state=state
+        )
+        flow.redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
+
+        # Esto intercambia el código de la URL por los tokens finales
+        # Usamos request.url que trae el 'code' de Google
         flow.fetch_token(authorization_response=request.url)
+        
         creds = flow.credentials
+
+        # IMPRIMIR EN LOGS DE RENDER (Busca esto en la pestaña Logs)
+        print("========================================")
+        print(f"TU REFRESH TOKEN ES: {creds.refresh_token}")
+        print("========================================")
+
+        return f"Autorización exitosa. El Refresh Token ha sido impreso en los Logs de Render."
         
-        # Muestra el token en los LOGS de Render
-        print("******************************************")
-        print(f"TU REFRESH TOKEN: {creds.refresh_token}")
-        print("******************************************")
-        
-        return "Autorización exitosa. Busca el REFRESH TOKEN en los Logs de Render."
     except Exception as e:
+        # Si falla, imprimimos el error detallado
         return f"Error en el callback: {str(e)}"
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
