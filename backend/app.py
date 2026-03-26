@@ -2927,6 +2927,25 @@ def delete_contract_document(document_id):
     except Exception as e:
         return f"Error al eliminar documento contractual: {str(e)}"
 
+@app.route("/auth/google")
+def auth_google():
+    # Genera la URL de Google para que tú des permiso
+    authorization_url, state = get_authorization_url()
+    session['oauth_state'] = state
+    return redirect(authorization_url)
+
+@app.route("/callback")
+def callback():
+    # Google te devuelve a aquí con un código en la URL
+    flow = create_oauth_flow(state=session['oauth_state'])
+    flow.fetch_token(authorization_response=request.url)
+    creds = flow.credentials
+    
+    # ESTO ES LO QUE NECESITAS: Imprime el refresh_token en la consola de Render
+    print(f"TU REFRESH TOKEN ES: {creds.refresh_token}")
+    return "Autorización exitosa. Revisa los logs de Render para copiar el Refresh Token."
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False)
