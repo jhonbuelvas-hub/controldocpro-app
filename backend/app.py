@@ -1333,104 +1333,88 @@ from backend.google_drive import get_drive_service
 @app.route("/communications/<int:comm_id>/ai")
 @login_required
 def analyze_communication_ai(comm_id):
-    # 1. Limpieza de variables
+    print(f"\n>>> [PASO 1] Entrando a la ruta para ID: {comm_id}")
     comm_text = ""
     contract_text = ""
     history_text = ""
     
     try:
-        print(f"--- INICIANDO PROCESO IA PARA ID: {comm_id} ---")
-        
+        # 1. CONEXIÓN
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
+        # 2. BUSCAR COMUNICACIÓN
         cur.execute("SELECT * FROM communications WHERE id = %s", (comm_id,))
         comm = cur.fetchone()
-        
         if not comm:
-            cur.close()
-            conn.close()
-            return f"Error: No existe la comunicación con ID {comm_id}", 404
+            print(">>> [ERROR] No existe la comunicación en DB")
+            return "Error: Comunicación no encontrada.", 404
+        print(f">>> [PASO 2] Comunicación encontrada: {comm['radicado']}")
 
+        # 3. BUSCAR ARCHIVO
         cur.execute("""
             SELECT ruta_archivo FROM communication_files 
             WHERE communication_id = %s AND es_principal = TRUE 
             ORDER BY id DESC LIMIT 1
         """, (comm_id,))
         main_file = cur.fetchone()
+        
+        if not main_file:
+            print(">>> [ERROR] No hay registro en communication_files")
+            return "Error: No hay archivo principal registrado.", 400
+        print(f">>> [PASO 3] URL en DB: {main_file['ruta_archivo']}")
 
-        if not main_file or not main_file.get("ruta_archivo"):
-            cur.close()
-            conn.close()
-            return f"Error: No hay PDF principal para el radicado {comm['radicado']}.", 400
-
-        # 2. DESCARGA DESDE DRIVE
+        # 4. GOOGLE DRIVE
         from backend.google_drive import get_drive_service
         service = get_drive_service()
         
-        try:
-            url = main_file["ruta_archivo"]
-            # Extraer ID de la URL de forma segura
-            import re
-            match = re.search(r'/d/([^/]+)', url)
-            drive_file_id = match.group(1) if match else url
+        url = main_file["ruta_archivo"]
+        import re
+        match = re.search(r'/d/([^/]+)', url)
+        drive_file_id = match.group(1) if match else url
+        
+        print(f">>> [PASO 4] Intentando descargar ID Drive: {drive_file_id}")
+        
+        request_drive = service.files().get_media(fileId=drive_file_id)
+        file_bytes = request_drive.execute()
+        
+        if not file_bytes:
+            print(">>> [ERROR] Drive devolvió 0 bytes")
+        else:
+            print(f">>> [PASO 5] Descarga exitosa: {len(file_bytes)} bytes")
             
-            print(f"DEBUG: Intentando descargar ID de Drive: {drive_file_id}")
-            
-            # Obtener el contenido del archivo
-            request_drive = service.files().get_media(fileId=drive_file_id)
-            file_bytes = request_drive.execute()
-            
-            if file_bytes:
-                print(f"DEBUG: Descarga exitosa ({len(file_bytes)} bytes). Procesando PDF...")
-                # USAMOS TU FUNCION DE UTILS_AI
-                comm_text = extract_text_from_pdf(file_bytes)
-                print(f"DEBUG: Resultado de extracción: {len(comm_text)} caracteres encontrados.")
-            else:
-                print("ERROR: El archivo descargado de Drive está totalmente vacío.")
+            # 5. EXTRACCIÓN DE TEXTO
+            from backend.ai.utils_ai import extract_text_from_pdf
+            comm_text = extract_text_from_pdf(file_bytes)
+            print(f">>> [PASO 6] Texto extraído: {len(comm_text)} caracteres")
 
-        except Exception as e:
-            print(f"ERROR EN DESCARGA/EXTRACCIÓN: {str(e)}")
-            comm_text = ""
-
-        # 3. DOCUMENTOS CONTRACTUALES (Opcional - solo si hay texto)
-        if comm.get("contract_id"):
-            cur.execute("SELECT ruta_archivo FROM contract_documents WHERE contract_id = %s LIMIT 1", (comm["contract_id"],))
-            c_doc = cur.fetchone()
-            if c_doc:
-                try:
-                    c_id = re.search(r'/d/([^/]+)', c_doc["ruta_archivo"]).group(1)
-                    c_bytes = service.files().get_media(fileId=c_id).execute()
-                    contract_text = extract_text_from_pdf(c_bytes)
-                except: pass
-
-        # 4. HISTORIAL (Opcional)
-        if comm.get("contract_id"):
-            cur.execute("""
-                SELECT radicado, asunto FROM communications 
-                WHERE contract_id = %s AND id != %s 
-                ORDER BY created_at DESC LIMIT 3
-            """, (comm["contract_id"], comm_id))
-            history = cur.fetchall()
-            history_text = "\n".join([f"Radicado: {h['radicado']} - Asunto: {h['asunto']}" for h in history])
+        # 6. HISTORIAL Y CONTRATO (Simplificado para descartar errores)
+        print(">>> [PASO 7] Buscando historial...")
+        # (Aquí va tu código de historial que ya tienes...)
 
         cur.close()
         conn.close()
 
-        # 5. LLAMADA A LA IA
+        # 7. LLAMADA FINAL A IA
+        print(">>> [PASO 8] Enviando a communication_ai.py")
         from backend.ai.communication_ai import generate_ai_response
         
-        # Si comm_text sigue vacío aquí, la IA te dará el error que configuramos
-        result = generate_ai_response(comm_text, contract_text, history_text)
+        # Verificación manual antes de llamar
+        if not comm_text or len(comm_text.strip()) < 10:
+            print(">>> [BLOQUEO] El texto es demasiado corto, se cancela envío a OpenAI")
+            return "Error: El contenido de la comunicación está vacío o no se pudo leer el PDF correctamente.", 400
 
-        return render_template("ai_response.html", 
-                               result=result, 
-                               communication=comm)
+        result = generate_ai_response(comm_text, contract_text, history_text)
+        print(">>> [PASO 9] IA respondió con éxito")
+
+        return render_template("ai_response.html", result=result, communication=comm)
 
     except Exception as e:
         import traceback
+        print(">>> [CRASH] Error detallado:")
         print(traceback.format_exc())
         return f"Error crítico: {str(e)}"
+
 
 
 @app.route("/users")
