@@ -1,1 +1,1 @@
-gunicorn --chdir backend/ai app:app --bind 0.0.0.0
+gunicorn --chdir backend app:app --bind 0.0.0.0
