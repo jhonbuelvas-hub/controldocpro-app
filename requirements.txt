@@ -2,7 +2,6 @@ Flask==3.1.0
 gunicorn==23.0.0
 psycopg2-binary==2.9.11
 werkzeug
-PyMuPDF
 openai>=1.47.0
 PyPDF2==3.0.1
 google-api-python-client
@@ -12,3 +11,4 @@ google-auth-httplib2
 fastapi
 uvicorn
 python-multipart
+PyPDF2==3.0.1
